@@ -127,13 +127,13 @@ class FocalLoss(nn.Module):
 
 
 class RegLoss(nn.Module):
-    '''Regression loss for an output tensor
-    Arguments:
-      output (batch x dim x h x w)
-      mask (batch x max_objects)
-      ind (batch x max_objects)
-      target (batch x max_objects x dim)
-  '''
+    """Regression loss for an output tensor
+        Arguments:
+          output (batch x dim x h x w)
+          mask (batch x max_objects)
+          ind (batch x max_objects)
+          target (batch x max_objects x dim)
+      """
 
     def __init__(self):
         super(RegLoss, self).__init__()

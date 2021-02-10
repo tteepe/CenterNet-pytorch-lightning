@@ -7,9 +7,13 @@ from utils.image import get_affine_transform, draw_msra_gaussian, draw_umich_gau
 
 
 class CtDetTransform:
-    def __init__(self, resolution=(512, 512), keep_resolution=False, padding=31, down_ratio=4,
+    def __init__(self, image_transforms=None, target_transforms=None,
+                 resolution=(512, 512), keep_resolution=False, padding=31, down_ratio=4,
                  augmented=False, random_crop=True, scale=0.4, shift=0.1, flip_probability=0.5,
                  num_classes=80, max_objects=128, gaussian_type='msra'):
+        self.image_transforms = image_transforms
+        self.target_transforms = target_transforms
+
         self.resolution = resolution
         self.keep_resolution = keep_resolution
         self.padding = padding
@@ -37,6 +41,9 @@ class CtDetTransform:
         return border // i
 
     def __call__(self, img, target):
+        if self.target_transforms:
+            target = self.target_transforms(target)
+
         num_objects = min(len(target), self.max_objects)
 
         height, width = img.size
@@ -74,13 +81,16 @@ class CtDetTransform:
         trans_input = get_affine_transform(c, s, 0, [input_w, input_h])
         inp = cv2.warpAffine(img, trans_input,  (input_w, input_h), flags=cv2.INTER_LINEAR)
 
+        if self.image_transforms:
+            inp = self.image_transforms(inp)
+
         output_h = input_h // self.down_ratio
         output_w = input_w // self.down_ratio
         trans_output = get_affine_transform(c, s, 0, [output_w, output_h])
 
         hm = np.zeros((self.num_classes, output_h, output_w), dtype=np.float32)
         wh = np.zeros((self.max_objects, 2), dtype=np.float32)
-        dense_wh = np.zeros((2, output_h, output_w), dtype=np.float32)
+        # dense_wh = np.zeros((2, output_h, output_w), dtype=np.float32)
         reg = np.zeros((self.max_objects, 2), dtype=np.float32)
         ind = np.zeros(self.max_objects, dtype=np.int64)
         reg_mask = np.zeros(self.max_objects, dtype=np.uint8)
@@ -119,7 +129,7 @@ class CtDetTransform:
                 gt_det.append([ct[0] - w / 2, ct[1] - h / 2,
                                ct[0] + w / 2, ct[1] + h / 2, 1, cls_id])
 
-        ret = {'input': inp, 'hm': hm, 'reg_mask': reg_mask, 'ind': ind, 'wh': wh, 'reg': reg}
+        ret = {'hm': hm, 'reg_mask': reg_mask, 'ind': ind, 'wh': wh, 'reg': reg}
         # if self.opt.dense_wh:
         #     hm_a = hm.max(axis=0, keepdims=True)
         #     dense_wh_mask = np.concatenate([hm_a, hm_a], axis=0)
@@ -133,5 +143,6 @@ class CtDetTransform:
         #         np.zeros((1, 6), dtype=np.float32)
         #     meta = {'c': c, 's': s, 'gt_det': gt_det, 'img_id': img_id}
         #     ret['meta'] = meta
-        return ret
+
+        return inp, ret
 

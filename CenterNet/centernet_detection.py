@@ -3,22 +3,21 @@ from argparse import ArgumentParser
 
 import torch
 import pytorch_lightning as pl
-from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torchvision.transforms import ColorJitter, Normalize, ToTensor
 
-from datasets.dataset.coco import CocoDetection
+from datasets.coco import CocoDetection
 from torchvision import transforms
 
-from datasets.transforms.transforms import CategoryIdToClass
-from datasets.transforms.ctdet import CtDetTransform
+from transforms import CategoryIdToClass, Lighting
+from transforms.ctdet import CtDetTransform
 from models.losses import RegL1Loss, FocalLoss
-from models.model import create_model
+from models import create_model
 from models.utils import _sigmoid
 
 
 class CenterNetDetection(pl.LightningModule):
-    def __init__(self, arch, heads, head_conv, learning_rate):
+    def __init__(self, arch, heads, head_conv, learning_rate=1e-4, hm_weight=1, wh_weight=1, off_weight=0.1):
         super().__init__()
         self.save_hyperparameters()
 
@@ -31,32 +30,35 @@ class CenterNetDetection(pl.LightningModule):
     def forward(self, x):
         return self.model.forward(x)
 
-    def loss(self, outputs, batch):
+    def loss(self, outputs, target):
         hm_loss, wh_loss, off_loss = 0, 0, 0
-        hm_weight, wh_weight, off_weight = 1, 1, 0.1
         num_stacks = len(outputs)
 
         for s in range(num_stacks):
             output = outputs[s]
             output['hm'] = _sigmoid(output['hm'])
 
-            hm_loss += self.criterion(output['hm'], batch['hm']) / num_stacks
+            hm_loss += self.criterion(output['hm'], target['hm']) / num_stacks
 
-            if wh_weight > 0:
+            if self.hparams.wh_weight > 0:
                 wh_loss += self.criterion_width_height(
-                    output['wh'], batch['reg_mask'],
-                    batch['ind'], batch['wh']) / num_stacks
+                    output['wh'], target['reg_mask'],
+                    target['ind'], target['wh']) / num_stacks
 
-            if off_weight > 0:
-                off_loss += self.criterion_regularizer(output['reg'], batch['reg_mask'], batch['ind'], batch['reg']) / num_stacks
+            if self.hparams.off_weight > 0:
+                off_loss += self.criterion_regularizer(output['reg'], target['reg_mask'], target['ind'],
+                                                       target['reg']) / num_stacks
 
-        loss = hm_weight * hm_loss + wh_weight * wh_loss + off_weight * off_loss
+        loss = self.hparams.hm_weight * hm_loss + \
+               self.hparams.wh_weight * wh_loss + \
+               self.hparams.off_weight * off_loss
         loss_stats = {'loss': loss, 'hm_loss': hm_loss, 'wh_loss': wh_loss, 'off_loss': off_loss}
         return loss, loss_stats
 
     def training_step(self, batch, batch_idx):
-        outputs = self(batch['input'])
-        loss, loss_stats = self.loss(outputs, batch)
+        img, target = batch
+        outputs = self(img)
+        loss, loss_stats = self.loss(outputs, target)
 
         self.log('train_loss', loss)
         for key, value in loss_stats.items():
@@ -65,8 +67,9 @@ class CenterNetDetection(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        outputs = self(batch['input'])
-        loss, loss_stats = self.loss(outputs, batch)
+        img, target = batch
+        outputs = self(img)
+        loss, loss_stats = self.loss(outputs, target)
 
         self.log('valid_loss', loss)
         for key, value in loss_stats.items():
@@ -102,7 +105,7 @@ class CenterNetDetection(pl.LightningModule):
 
 
 def cli_main():
-    pl.seed_everything(80085)
+    pl.seed_everything(5318008)
 
     # ------------
     # args
@@ -120,24 +123,27 @@ def cli_main():
     # ------------
     # data
     # ------------
+    img_transforms_train = transforms.Compose([
+                                   ColorJitter(.4, .4, .4),
+                                   ToTensor(),
+                                   Lighting(.1, CocoDetection.eigen_val, CocoDetection.eigen_vec),
+                                   Normalize(CocoDetection.mean, CocoDetection.std, inplace=True),
+                               ])
+    img_transforms_valid = transforms.Compose([
+                                 ToTensor(),
+                                 Normalize(CocoDetection.mean, CocoDetection.std, inplace=True),
+                             ])
+    target_transforms = CategoryIdToClass(CocoDetection.valid_ids)
+
     coco_train = CocoDetection(os.path.join(args.coco_image_root, 'train2017'),
                                os.path.join(args.coco_annotation, 'instances_train2017.json'),
-                               transform=transforms.Compose([
-                                   ToTensor(),
-                                   ColorJitter(0.4, 0.4, 0.4),
-                                   Normalize(CocoDetection.mean, CocoDetection.std, inplace=True),
-                                   ]),
-                               target_transform=CategoryIdToClass(CocoDetection.valid_ids),
-                               sample_transforms=CtDetTransform(augmented=True))
+                               transforms=CtDetTransform(image_transforms=img_transforms_train,
+                                                         target_transforms=target_transforms))
 
     coco_val = CocoDetection(os.path.join(args.coco_image_root, 'val2017'),
                              os.path.join(args.coco_annotation, 'instances_val2017.json'),
-                             transform=transforms.Compose([
-                                   ToTensor(),
-                                   Normalize(CocoDetection.mean, CocoDetection.std, inplace=True),
-                                   ]),
-                             target_transform=CategoryIdToClass(CocoDetection.valid_ids),
-                             sample_transforms=CtDetTransform(augmented=False))
+                             transforms=CtDetTransform(image_transforms=img_transforms_valid,
+                                                       target_transforms=target_transforms))
 
     train_loader = DataLoader(coco_train, batch_size=args.batch_size, num_workers=args.num_workers)
     val_loader = DataLoader(coco_val, batch_size=args.batch_size, num_workers=args.num_workers)

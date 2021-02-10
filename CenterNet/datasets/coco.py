@@ -6,6 +6,11 @@ class CocoDetection(torchvision.datasets.coco.CocoDetection):
     default_resolution = (512, 512)
     mean = [0.40789654, 0.44719302, 0.47026115]
     std = [0.28863828, 0.27408164, 0.27809835]
+    # PCA
+    eigen_val: [0.2175, 0.0188, 0.0045]
+    eigen_vec: [[-0.5675, 0.7192, 0.4009],
+                [-0.5808, -0.0045, -0.8140],
+                [-0.5836, -0.6948, 0.4203]]
 
     max_objs = 128
     class_name = [
@@ -32,22 +37,3 @@ class CocoDetection(torchvision.datasets.coco.CocoDetection):
         72, 73, 74, 75, 76, 77, 78, 79, 80, 81,
         82, 84, 85, 86, 87, 88, 89, 90
     ]
-
-    def __init__(self, root, annFile, sample_transforms, transform=None, target_transform=None):
-        super(CocoDetection, self).__init__(root, annFile)
-
-        self.transform = transform
-        self.target_transform = target_transform
-        self.sample_transforms = sample_transforms
-
-    def __getitem__(self, index):
-        img, target = super(CocoDetection, self).__getitem__(index)
-
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-
-        res = self.sample_transforms(img, target)
-
-        res['input'] = self.transform(res['input'])
-
-        return res
