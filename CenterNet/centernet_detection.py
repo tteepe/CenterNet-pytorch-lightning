@@ -124,9 +124,11 @@ def cli_main():
     # data
     # ------------
     img_transforms_train = transforms.Compose([
-                                   ColorJitter(.4, .4, .4),
                                    ToTensor(),
-                                   Lighting(.1, CocoDetection.eigen_val, CocoDetection.eigen_vec),
+                                   ColorJitter(.4, .4, .4),
+                                   Lighting(.1,
+                                            torch.Tensor(CocoDetection.eigen_val),
+                                            torch.Tensor(CocoDetection.eigen_vec)),
                                    Normalize(CocoDetection.mean, CocoDetection.std, inplace=True),
                                ])
     img_transforms_valid = transforms.Compose([

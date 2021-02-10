@@ -1,10 +1,12 @@
-# CenterNet w| PyTorchLightning 
+# CenterNet w/ PyTorchLightning 
 
 ![CI testing](https://github.com/tteepe/CenterNet-pytorch-lightning/workflows/CI%20testing/badge.svg?branch=main&event=push)
 
  
-## Description   
-Re-implementation of the glorious Network CenterNet as an easy to use PyTorchLightning package.
+## Description
+My attempt at a cleaner implementation of the glorious [CenterNet](https://github.com/xingyizhou/CenterNet).
+
+
 
 ## How to run   
 First, install dependencies   

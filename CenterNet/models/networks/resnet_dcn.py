@@ -5,17 +5,11 @@
 # Modified by Dequan Wang and Xingyi Zhou
 # ------------------------------------------------------------------------------
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import os
 import math
 import logging
 
-import torch
 import torch.nn as nn
-from .DCNv2.dcn_v2 import DCN
+from .DCNv2.DCN.dcn_v2 import DCN
 import torch.utils.model_zoo as model_zoo
 
 BN_MOMENTUM = 0.1
@@ -116,7 +110,7 @@ def fill_up_weights(up):
             w[0, 0, i, j] = \
                 (1 - math.fabs(i / f - c)) * (1 - math.fabs(j / f - c))
     for c in range(1, w.size(0)):
-        w[c, 0, :, :] = w[0, 0, :, :] 
+        w[c, 0, :, :] = w[0, 0, :, :]
 
 def fill_fc_weights(layers):
     for m in layers.modules():
@@ -159,16 +153,16 @@ class PoseResNet(nn.Module):
                   nn.Conv2d(64, head_conv,
                     kernel_size=3, padding=1, bias=True),
                   nn.ReLU(inplace=True),
-                  nn.Conv2d(head_conv, classes, 
-                    kernel_size=1, stride=1, 
+                  nn.Conv2d(head_conv, classes,
+                    kernel_size=1, stride=1,
                     padding=0, bias=True))
                 if 'hm' in head:
                     fc[-1].bias.data.fill_(-2.19)
                 else:
                     fill_fc_weights(fc)
             else:
-                fc = nn.Conv2d(64, classes, 
-                  kernel_size=1, stride=1, 
+                fc = nn.Conv2d(64, classes,
+                  kernel_size=1, stride=1,
                   padding=0, bias=True)
                 if 'hm' in head:
                     fc.bias.data.fill_(-2.19)
@@ -218,11 +212,11 @@ class PoseResNet(nn.Module):
                 self._get_deconv_cfg(num_kernels[i], i)
 
             planes = num_filters[i]
-            fc = DCN(self.inplanes, planes, 
+            fc = DCN(self.inplanes, planes,
                     kernel_size=(3,3), stride=1,
                     padding=1, dilation=1, deformable_groups=1)
             # fc = nn.Conv2d(self.inplanes, planes,
-            #         kernel_size=3, stride=1, 
+            #         kernel_size=3, stride=1,
             #         padding=1, dilation=1, bias=False)
             # fill_fc_weights(fc)
             up = nn.ConvTranspose2d(
