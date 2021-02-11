@@ -10,20 +10,23 @@ from datasets.coco import CocoDetection
 from torchvision import transforms
 
 from transforms import CategoryIdToClass, Lighting
-from transforms.ctdet import CtDetTransform
-from models.losses import RegL1Loss, FocalLoss
+from transforms.multi_pose import MultiPoseTransform
+from models.losses import RegL1Loss, FocalLoss, RegWeightedL1Loss
 from models import create_model
 from models.utils import _sigmoid
 
 
 class CenterNetDetection(pl.LightningModule):
-    def __init__(self, arch, heads, head_conv, learning_rate=1e-4, hm_weight=1, wh_weight=1, off_weight=0.1):
+    def __init__(self, arch, heads, head_conv, learning_rate=1e-4, hm_weight=1, wh_weight=1, off_weight=0.1,
+                 hp_weight=1, hm_hp_weight=1):
         super().__init__()
         self.save_hyperparameters()
 
         self.model = create_model(arch, heads, head_conv)
 
         self.criterion = FocalLoss()
+        self.criterion_heatmap_heatpoints = FocalLoss()
+        self.criterion_keypoint = RegWeightedL1Loss()
         self.criterion_regularizer = RegL1Loss()
         self.criterion_width_height = RegL1Loss()
 
@@ -32,20 +35,30 @@ class CenterNetDetection(pl.LightningModule):
 
     def loss(self, outputs, target):
         hm_loss, wh_loss, off_loss = 0, 0, 0
+        hp_loss, off_loss, hm_hp_loss, hp_offset_loss = 0, 0, 0, 0
         num_stacks = len(outputs)
 
         for s in range(num_stacks):
             output = outputs[s]
             output['hm'] = _sigmoid(output['hm'])
+            output['hm_hp'] = _sigmoid(output['hm_hp'])
 
             hm_loss += self.criterion(output['hm'], target['hm'])
+            hp_loss += self.criterion_keypoint(output['hps'], target['hps_mask'], target['ind'], target['hps'])
             wh_loss += self.criterion_width_height(output['wh'], target['reg_mask'], target['ind'], target['wh'])
-            off_loss += self.criterion_regularizer(output['reg'], target['reg_mask'], target['ind'], target['reg'])
 
-        loss = (self.hparams.hm_weight * hm_loss +
-                self.hparams.wh_weight * wh_loss +
-                self.hparams.off_weight * off_loss) / num_stacks
-        loss_stats = {'loss': loss, 'hm_loss': hm_loss, 'wh_loss': wh_loss, 'off_loss': off_loss}
+            off_loss += self.criterion_regularizer(output['reg'], target['reg_mask'], target['ind'], target['reg'])
+            hp_offset_loss += self.criterion_regularizer(output['hp_offset'], target['hp_mask'], target['hp_ind'],
+                                                         target['hp_offset'])
+            hm_hp_loss += self.criterion_heatmap_heatpoints(output['hm_hp'], target['hm_hp'])
+
+        loss = (self.hparams.hm_weight * hm_loss + self.hparams.wh_weight * wh_loss +
+                self.hparams.off_weight * off_loss + self.hparams.hp_weight * hp_loss +
+                self.hparams.hm_hp_weight * hm_hp_loss + self.hparams.off_weight * hp_offset_loss) / num_stacks
+
+        loss_stats = {'loss': loss, 'hm_loss': hm_loss, 'hp_loss': hp_loss,
+                      'hm_hp_loss': hm_hp_loss, 'hp_offset_loss': hp_offset_loss,
+                      'wh_loss': wh_loss, 'off_loss': off_loss}
         return loss, loss_stats
 
     def training_step(self, batch, batch_idx):
@@ -131,15 +144,15 @@ def cli_main():
     target_transforms = CategoryIdToClass(CocoDetection.valid_ids)
 
     coco_train = CocoDetection(os.path.join(args.coco_image_root, 'train2017'),
-                               os.path.join(args.coco_annotation, 'instances_train2017.json'),
-                               transforms=CtDetTransform(image_transforms=img_transforms_train,
-                                                         target_transforms=target_transforms,
-                                                         augmented=True))
+                               os.path.join(args.coco_annotation, 'person_keypoints_train2017.json'),
+                               transforms=MultiPoseTransform(image_transforms=img_transforms_train,
+                                                             target_transforms=target_transforms,
+                                                             augmented=True))
 
     coco_val = CocoDetection(os.path.join(args.coco_image_root, 'val2017'),
-                             os.path.join(args.coco_annotation, 'instances_val2017.json'),
-                             transforms=CtDetTransform(image_transforms=img_transforms_valid,
-                                                       target_transforms=target_transforms))
+                             os.path.join(args.coco_annotation, 'person_keypoints_val2017.json'),
+                             transforms=MultiPoseTransform(image_transforms=img_transforms_valid,
+                                                           target_transforms=target_transforms))
 
     train_loader = DataLoader(coco_train, batch_size=args.batch_size, num_workers=args.num_workers)
     val_loader = DataLoader(coco_val, batch_size=args.batch_size, num_workers=args.num_workers)
@@ -148,7 +161,7 @@ def cli_main():
     # ------------
     # model
     # ------------
-    heads = {'hm': CocoDetection.num_classes, 'wh': 2, 'reg': 2}
+    heads = {'hm': 1, 'wh': 2, 'reg': 2, 'hm_hp': 17, 'hp_offset': 2, 'hps': 34}
     model = CenterNetDetection(args.arch, heads, args.head_conv, args.learning_rate)
 
     # ------------

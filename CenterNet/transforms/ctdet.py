@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 
 from utils.image import get_affine_transform, draw_msra_gaussian, draw_umich_gaussian, gaussian_radius, affine_transform
+from utils.transforms import get_border, coco_box_to_bbox
 
 
 class CtDetTransform:
@@ -29,22 +30,9 @@ class CtDetTransform:
         self.max_objects = max_objects
         self.gaussian_type = gaussian_type
 
-    def _coco_box_to_bbox(self, box):
-        bbox = np.array([box[0], box[1], box[0] + box[2], box[1] + box[3]],
-                        dtype=np.float32)
-        return bbox
-
-    def _get_border(self, border, size):
-        i = 1
-        while size - border // i <= border // i:
-            i *= 2
-        return border // i
-
     def __call__(self, img, target):
         if self.target_transforms:
             target = self.target_transforms(target)
-
-        num_objects = min(len(target), self.max_objects)
 
         height, width = img.size
         img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
@@ -62,8 +50,8 @@ class CtDetTransform:
         if self.augmented:
             if self.random_crop:
                 s = s * np.random.choice(np.arange(0.6, 1.4, 0.1))
-                w_border = self._get_border(128, width)
-                h_border = self._get_border(128, height)
+                w_border = get_border(128, width)
+                h_border = get_border(128, height)
                 c[0] = np.random.randint(low=w_border, high=width - w_border)
                 c[1] = np.random.randint(low=h_border, high=height - h_border)
             else:
@@ -100,9 +88,10 @@ class CtDetTransform:
         draw_gaussian = draw_msra_gaussian if self.gaussian_type == "msra" else draw_umich_gaussian
 
         gt_det = []
+        num_objects = min(len(target), self.max_objects)
         for k in range(num_objects):
             ann = target[k]
-            bbox = self._coco_box_to_bbox(ann['bbox'])
+            bbox = coco_box_to_bbox(ann['bbox'])
             cls_id = ann['class_id']
             if flipped:
                 bbox[[0, 2]] = width - bbox[[2, 0]] - 1
