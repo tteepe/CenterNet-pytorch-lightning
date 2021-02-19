@@ -1,25 +1,40 @@
 import os
 from argparse import ArgumentParser
 
+import imgaug as ia
+import imgaug.augmenters as iaa
+
 import torch
+import torchvision
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
-from torchvision.transforms import ColorJitter, Normalize, ToTensor
 
+from centernet import CenterNet
 from datasets.coco import CocoDetection
-from torchvision import transforms
+from decode.utils import sigmoid_clamped
 
-from transforms import CategoryIdToClass, Lighting
-from transforms.multi_pose import MultiPoseTransform
+from transforms import CategoryIdToClass, ComposeSample, ImageAugmentation
 from models.losses import RegL1Loss, FocalLoss, RegWeightedL1Loss
 from models import create_model
-from models.utils import _sigmoid
+from transforms.ctdet import CenterDetectionSample
+from transforms.multi_pose import MultiPoseSample
+from transforms.sample import MultiSampleTransform
 
 
-class CenterNetDetection(pl.LightningModule):
-    def __init__(self, arch, heads, head_conv, learning_rate=1e-4, hm_weight=1, wh_weight=1, off_weight=0.1,
-                 hp_weight=1, hm_hp_weight=1):
-        super().__init__()
+class CenterNetPose(CenterNet):
+    def __init__(
+        self,
+        arch,
+        heads,
+        head_conv,
+        learning_rate=1e-4,
+        hm_weight=1,
+        wh_weight=1,
+        off_weight=0.1,
+        hp_weight=1,
+        hm_hp_weight=1,
+    ):
+        super().__init__(arch, heads, head_conv)
         self.save_hyperparameters()
 
         self.model = create_model(arch, heads, head_conv)
@@ -40,48 +55,49 @@ class CenterNetDetection(pl.LightningModule):
 
         for s in range(num_stacks):
             output = outputs[s]
-            output['hm'] = _sigmoid(output['hm'])
-            output['hm_hp'] = _sigmoid(output['hm_hp'])
+            output["hm"] = sigmoid_clamped(output["hm"])
+            output["hm_hp"] = sigmoid_clamped(output["hm_hp"])
 
-            hm_loss += self.criterion(output['hm'], target['hm'])
-            hp_loss += self.criterion_keypoint(output['hps'], target['hps_mask'], target['ind'], target['hps'])
-            wh_loss += self.criterion_width_height(output['wh'], target['reg_mask'], target['ind'], target['wh'])
+            hm_loss += self.criterion(output["hm"], target["hm"])
+            hp_loss += self.criterion_keypoint(
+                output["hps"], target["hps_mask"], target["ind"], target["hps"]
+            )
+            wh_loss += self.criterion_width_height(
+                output["wh"], target["reg_mask"], target["ind"], target["wh"]
+            )
 
-            off_loss += self.criterion_regularizer(output['reg'], target['reg_mask'], target['ind'], target['reg'])
-            hp_offset_loss += self.criterion_regularizer(output['hp_offset'], target['hp_mask'], target['hp_ind'],
-                                                         target['hp_offset'])
-            hm_hp_loss += self.criterion_heatmap_heatpoints(output['hm_hp'], target['hm_hp'])
+            off_loss += self.criterion_regularizer(
+                output["reg"], target["reg_mask"], target["ind"], target["reg"]
+            )
+            hp_offset_loss += self.criterion_regularizer(
+                output["hp_offset"],
+                target["hp_mask"],
+                target["hp_ind"],
+                target["hp_offset"],
+            )
+            hm_hp_loss += self.criterion_heatmap_heatpoints(
+                output["hm_hp"], target["hm_hp"]
+            )
 
-        loss = (self.hparams.hm_weight * hm_loss + self.hparams.wh_weight * wh_loss +
-                self.hparams.off_weight * off_loss + self.hparams.hp_weight * hp_loss +
-                self.hparams.hm_hp_weight * hm_hp_loss + self.hparams.off_weight * hp_offset_loss) / num_stacks
+        loss = (
+            self.hparams.hm_weight * hm_loss
+            + self.hparams.wh_weight * wh_loss
+            + self.hparams.off_weight * off_loss
+            + self.hparams.hp_weight * hp_loss
+            + self.hparams.hm_hp_weight * hm_hp_loss
+            + self.hparams.off_weight * hp_offset_loss
+        ) / num_stacks
 
-        loss_stats = {'loss': loss, 'hm_loss': hm_loss, 'hp_loss': hp_loss,
-                      'hm_hp_loss': hm_hp_loss, 'hp_offset_loss': hp_offset_loss,
-                      'wh_loss': wh_loss, 'off_loss': off_loss}
+        loss_stats = {
+            "loss": loss,
+            "hm_loss": hm_loss,
+            "hp_loss": hp_loss,
+            "hm_hp_loss": hm_hp_loss,
+            "hp_offset_loss": hp_offset_loss,
+            "wh_loss": wh_loss,
+            "off_loss": off_loss,
+        }
         return loss, loss_stats
-
-    def training_step(self, batch, batch_idx):
-        img, target = batch
-        outputs = self(img)
-        loss, loss_stats = self.loss(outputs, target)
-
-        self.log('train_loss', loss)
-        for key, value in loss_stats.items():
-            self.log(f'train_loss_{key}', value)
-
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        img, target = batch
-        outputs = self(img)
-        loss, loss_stats = self.loss(outputs, target)
-
-        self.log('valid_loss', loss)
-        for key, value in loss_stats.items():
-            self.log(f'valid_loss_{key}', value)
-
-        return loss
 
     def test_step(self, batch, batch_idx):
         pass
@@ -89,25 +105,6 @@ class CenterNetDetection(pl.LightningModule):
         # y_hat = self(x)
         # loss = F.cross_entropy(y_hat, y)
         # self.log('test_loss', loss)
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
-
-    @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--arch', default='dla_34',
-                            help='model architecture. Currently tested '
-                                 'res_18 | res_101 | resdcn_18 | resdcn_101 | dlav0_34 | dla_34 | hourglass')
-        parser.add_argument('--head_conv', type=int, default=-1,
-                            help='conv layer channels for output head'
-                                 '0 for no conv layer, -1 for default setting, 64 for resnets and 256 for dla.')
-        parser.add_argument('--down_ratio', type=int, default=4,
-                            help='output stride. Currently only supports 4.')
-
-        parser.add_argument('--learning_rate', type=float, default=2.5e-4)
-
-        return parser
 
 
 def cli_main():
@@ -117,52 +114,84 @@ def cli_main():
     # args
     # ------------
     parser = ArgumentParser()
-    parser.add_argument('coco_image_root')
-    parser.add_argument('coco_annotation')
+    parser.add_argument("image_root")
+    parser.add_argument("annotation_root")
 
-    parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--num_workers', default=8, type=int)
+    parser.add_argument("--batch_size", default=32, type=int)
+    parser.add_argument("--num_workers", default=8, type=int)
     parser = pl.Trainer.add_argparse_args(parser)
-    parser = CenterNetDetection.add_model_specific_args(parser)
+    parser = CenterNetPose.add_model_specific_args(parser)
     args = parser.parse_args()
 
     # ------------
     # data
     # ------------
-    img_transforms_train = transforms.Compose([
-        ToTensor(),
-        ColorJitter(.4, .4, .4),
-        Lighting(.1,
-                 torch.Tensor(CocoDetection.eigen_val),
-                 torch.Tensor(CocoDetection.eigen_vec)),
-        Normalize(CocoDetection.mean, CocoDetection.std, inplace=True),
+    train_transform = ComposeSample([
+        ImageAugmentation(
+            iaa.Sequential([
+                # DO NOT use flip augmentation here, use PoseFlip instead
+                iaa.Sometimes(0.5, iaa.GaussianBlur(sigma=(0, 0.5))),
+                iaa.LinearContrast((0.75, 1.5)),
+                iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5),
+                iaa.Multiply((0.8, 1.2), per_channel=0.1),
+                iaa.Affine(
+                    scale={"x": (0.6, 1.4), "y": (0.6, 1.4)},
+                    translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
+                    rotate=(-5, 5),
+                    shear=(-3, 3)
+                ),
+                iaa.PadToFixedSize(width=512, height=512),
+                iaa.CropToFixedSize(width=512, height=512)
+            ]),
+            torchvision.transforms.Compose([
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Normalize(CocoDetection.mean, CocoDetection.std, inplace=True)
+            ])
+        ),
+        CategoryIdToClass(CocoDetection.valid_ids),
+        MultiSampleTransform([
+            CenterDetectionSample(),
+            MultiPoseSample()
+        ])
     ])
-    img_transforms_valid = transforms.Compose([
-        ToTensor(),
-        Normalize(CocoDetection.mean, CocoDetection.std, inplace=True),
+
+    valid_transform = ComposeSample([
+        ImageAugmentation(
+            iaa.Sequential([
+                iaa.PadToFixedSize(width=512, height=512),
+                iaa.CropToFixedSize(width=512, height=512)
+            ]),
+            torchvision.transforms.Compose([
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Normalize(CocoDetection.mean, CocoDetection.std, inplace=True)
+            ])
+        ),
+        CategoryIdToClass(CocoDetection.valid_ids),
+        MultiSampleTransform([
+            CenterDetectionSample(),
+            MultiPoseSample()
+        ])
     ])
-    target_transforms = CategoryIdToClass(CocoDetection.valid_ids)
 
-    coco_train = CocoDetection(os.path.join(args.coco_image_root, 'train2017'),
-                               os.path.join(args.coco_annotation, 'person_keypoints_train2017.json'),
-                               transforms=MultiPoseTransform(image_transforms=img_transforms_train,
-                                                             target_transforms=target_transforms,
-                                                             augmented=True))
+    coco_train = CocoDetection(os.path.join(args.image_root, 'train2017'),
+                               os.path.join(args.annotation_root, 'person_keypoints_train2017.json'),
+                               transforms=train_transform)
 
-    coco_val = CocoDetection(os.path.join(args.coco_image_root, 'val2017'),
-                             os.path.join(args.coco_annotation, 'person_keypoints_val2017.json'),
-                             transforms=MultiPoseTransform(image_transforms=img_transforms_valid,
-                                                           target_transforms=target_transforms))
+    coco_val = CocoDetection(os.path.join(args.image_root, 'val2017'),
+                             os.path.join(args.annotation_root, 'person_keypoints_val2017.json'),
+                             transforms=valid_transform)
 
-    train_loader = DataLoader(coco_train, batch_size=args.batch_size, num_workers=args.num_workers)
-    val_loader = DataLoader(coco_val, batch_size=args.batch_size, num_workers=args.num_workers)
-    test_loader = DataLoader(coco_val, batch_size=args.batch_size, num_workers=args.num_workers)
+    train_loader = DataLoader(coco_train, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True)
+    val_loader = DataLoader(coco_val, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True)
+    test_loader = DataLoader(coco_val, batch_size=1, num_workers=1)
 
     # ------------
     # model
     # ------------
-    heads = {'hm': 1, 'wh': 2, 'reg': 2, 'hm_hp': 17, 'hp_offset': 2, 'hps': 34}
-    model = CenterNetDetection(args.arch, heads, args.head_conv, args.learning_rate)
+    heads = {"hm": 1, "wh": 2, "reg": 2, "hm_hp": 17, "hp_offset": 2, "hps": 34}
+    if args.head_conv == -1:  # init default head_conv
+        args.head_conv = 256 if 'dla' in args.arch else 64
+    model = CenterNetPose(args.arch, heads, args.head_conv, args.learning_rate)
 
     # ------------
     # training
@@ -176,5 +205,5 @@ def cli_main():
     trainer.test(test_dataloaders=test_loader)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli_main()

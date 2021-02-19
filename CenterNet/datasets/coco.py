@@ -3,14 +3,8 @@ import torchvision
 
 class CocoDetection(torchvision.datasets.coco.CocoDetection):
     num_classes = 80
-    default_resolution = (512, 512)
     mean = [0.40789654, 0.44719302, 0.47026115]
     std = [0.28863828, 0.27408164, 0.27809835]
-    # PCA
-    eigen_val = [0.2175, 0.0188, 0.0045]
-    eigen_vec = [[-0.5675, 0.7192, 0.4009],
-                 [-0.5808, -0.0045, -0.8140],
-                 [-0.5836, -0.6948, 0.4203]]
 
     max_objs = 128
     class_name = [

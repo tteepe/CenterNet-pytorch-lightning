@@ -6,6 +6,17 @@
 ## Description
 My attempt at a cleaner implementation of the glorious [CenterNet](https://github.com/xingyizhou/CenterNet).
 
+### Features
+- Decoupled backbones and heads for easier backbone integration
+- Split sample creation into image augmentation (with [imgaug](https://github.com/aleju/imgaug)) and actual sample creation
+- Comes shipped with PyTorch Lightning modules but can also be used with good ol' plain PyTorch
+- Stripped all code not used to reproduce the results in the paper
+
+### ToDos
+Pull requests are welcome!
+
+- [ ] Add 3D bounding box detection
+- [ ] Add ExtremeNet detection
 
 
 ## How to run   
@@ -24,23 +35,26 @@ pip install -r requirements.txt
 # module folder
 cd CenterNet
 
-# run module (example: mnist as your main contribution)   
-python lit_classifier_main.py    
+# run module
+python centernet_detection.py    
+python centernet_multi_pose.py    
 ```
 
 ## Imports
 This project is setup as a package which means you can now easily import any file into any other file like so:
 
 ```python
-from centernet.datasets.mnist import mnist
-from centernet.lit_classifier_main import LitClassifier
+from CenterNet.datasets.coco import CocoDetection
+from CenterNet.centernet_detection import CenterNetDetection
 from pytorch_lightning import Trainer
 
 # model
-model = LitClassifier()
+model = CenterNetDetection()
 
 # data
-train, val, test = mnist()
+train = CocoDetection("train2017", "instances_train2017.json")
+val = CocoDetection("val2017", "instances_val2017.json")
+test = CocoDetection("test2017", "image_info_test2017.json")
 
 # train
 trainer = Trainer()
