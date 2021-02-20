@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import cv2
 
-from decode.utils import _nms, _topk, _transpose_and_gather_feat
+from decode.common import _nms, _topk, _transpose_and_gather_feat
 
 
 def get_dir(src_point, rot_rad):

@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from decode.utils import _transpose_and_gather_feat
+from utils.decode import _transpose_and_gather_feat
 
 
 def _slow_neg_loss(pred, gt):

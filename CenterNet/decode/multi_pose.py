@@ -1,8 +1,7 @@
 import torch
 import numpy as np
 
-from utils import _nms, _topk, _topk_channel, _transpose_and_gather_feat
-from utils.gaussian import transform_preds
+from common import _nms, _topk, _topk_channel, _transpose_and_gather_feat
 
 
 def multi_pose_decode(heat, wh, kps, reg=None, hm_hp=None, hp_offset=None, K=100):
@@ -99,8 +98,10 @@ def multi_pose_post_process(dets, c, s, h, w):
     # return list of 39 in image coord
     ret = []
     for i in range(dets.shape[0]):
-        bbox = transform_preds(dets[i, :, :4].reshape(-1, 2), c[i], s[i], (w, h))
-        pts = transform_preds(dets[i, :, 5:39].reshape(-1, 2), c[i], s[i], (w, h))
+        # bbox = transform_preds(dets[i, :, :4].reshape(-1, 2), c[i], s[i], (w, h))
+        bbox = dets[i, :, :4].reshape(-1, 2), c[i], s[i], (w, h)
+        # pts = transform_preds(dets[i, :, 5:39].reshape(-1, 2), c[i], s[i], (w, h))
+        pts = dets[i, :, 5:39].reshape(-1, 2), c[i], s[i], (w, h)
         top_preds = (
             np.concatenate(
                 [bbox.reshape(-1, 4), dets[i, :, 4:5], pts.reshape(-1, 34)], axis=1

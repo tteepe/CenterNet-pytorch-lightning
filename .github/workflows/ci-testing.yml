@@ -60,9 +60,14 @@ jobs:
         pip list
       shell: bash
 
+    - name: Setup externals
+      run: |
+          cd CenterNet/models/backbones/DCNv2
+          sh make.sh
+
     - name: Tests
       run: |
-        coverage run --source CenterNet -m py.test CenterNet tests -v --junitxml=junit/test-results-${{ runner.os }}-${{ matrix.python-version }}.xml
+        coverage run --source CenterNet -m py.test CenterNet tests -v --ignore CenterNet/models/backbones/DCNv2/DCN --junitxml=junit/test-results-${{ runner.os }}-${{ matrix.python-version }}.xml
 
     - name: Statistics
       if: success()

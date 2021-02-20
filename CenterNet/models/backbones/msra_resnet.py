@@ -2,18 +2,20 @@
 # Copyright (c) Microsoft
 # Licensed under the MIT License.
 # Written by Bin Xiao (Bin.Xiao@microsoft.com)
-# Modified by Dequan Wang and Xingyi Zhou
+# Modified by Xingyi Zhou
 # ------------------------------------------------------------------------------
 
-import math
-import logging
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
+import os
+
+import torch
 import torch.nn as nn
-from .DCNv2.DCN.dcn_v2 import DCN
 import torch.utils.model_zoo as model_zoo
 
 BN_MOMENTUM = 0.1
-logger = logging.getLogger(__name__)
 
 model_urls = {
     "resnet18": "https://download.pytorch.org/models/resnet18-5c106cde.pth",
@@ -105,32 +107,11 @@ class Bottleneck(nn.Module):
         return out
 
 
-def fill_up_weights(up):
-    w = up.weight.data
-    f = math.ceil(w.size(2) / 2)
-    c = (2 * f - 1 - f % 2) / (2.0 * f)
-    for i in range(w.size(2)):
-        for j in range(w.size(3)):
-            w[0, 0, i, j] = (1 - math.fabs(i / f - c)) * (1 - math.fabs(j / f - c))
-    for c in range(1, w.size(0)):
-        w[c, 0, :, :] = w[0, 0, :, :]
-
-
-def fill_fc_weights(layers):
-    for m in layers.modules():
-        if isinstance(m, nn.Conv2d):
-            nn.init.normal_(m.weight, std=0.001)
-            # torch.nn.init.kaiming_normal_(m.weight.data, nonlinearity='relu')
-            # torch.nn.init.xavier_normal_(m.weight.data)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-
-
 class PoseResNet(nn.Module):
-    def __init__(self, block, layers, heads, head_conv):
+    def __init__(self, block, layers, heads, head_conv, **kwargs):
         self.inplanes = 64
-        self.heads = heads
         self.deconv_with_bias = False
+        self.heads = heads
 
         super(PoseResNet, self).__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -145,38 +126,32 @@ class PoseResNet(nn.Module):
         # used for deconv layers
         self.deconv_layers = self._make_deconv_layer(
             3,
-            [256, 128, 64],
+            [256, 256, 256],
             [4, 4, 4],
         )
+        # self.final_layer = []
 
-        for head in self.heads:
-            classes = self.heads[head]
+        for head in sorted(self.heads):
+            num_output = self.heads[head]
             if head_conv > 0:
                 fc = nn.Sequential(
-                    nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
+                    nn.Conv2d(256, head_conv, kernel_size=3, padding=1, bias=True),
                     nn.ReLU(inplace=True),
                     nn.Conv2d(
-                        head_conv,
-                        classes,
-                        kernel_size=1,
-                        stride=1,
-                        padding=0,
-                        bias=True,
+                        head_conv, num_output, kernel_size=1, stride=1, padding=0
                     ),
                 )
-                if "hm" in head:
-                    fc[-1].bias.data.fill_(-2.19)
-                else:
-                    fill_fc_weights(fc)
             else:
                 fc = nn.Conv2d(
-                    64, classes, kernel_size=1, stride=1, padding=0, bias=True
+                    in_channels=256,
+                    out_channels=num_output,
+                    kernel_size=1,
+                    stride=1,
+                    padding=0,
                 )
-                if "hm" in head:
-                    fc.bias.data.fill_(-2.19)
-                else:
-                    fill_fc_weights(fc)
             self.__setattr__(head, fc)
+
+        # self.final_layer = nn.ModuleList(self.final_layer)
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -226,34 +201,17 @@ class PoseResNet(nn.Module):
             kernel, padding, output_padding = self._get_deconv_cfg(num_kernels[i], i)
 
             planes = num_filters[i]
-            fc = DCN(
-                self.inplanes,
-                planes,
-                kernel_size=(3, 3),
-                stride=1,
-                padding=1,
-                dilation=1,
-                deformable_groups=1,
+            layers.append(
+                nn.ConvTranspose2d(
+                    in_channels=self.inplanes,
+                    out_channels=planes,
+                    kernel_size=kernel,
+                    stride=2,
+                    padding=padding,
+                    output_padding=output_padding,
+                    bias=self.deconv_with_bias,
+                )
             )
-            # fc = nn.Conv2d(self.inplanes, planes,
-            #         kernel_size=3, stride=1,
-            #         padding=1, dilation=1, bias=False)
-            # fill_fc_weights(fc)
-            up = nn.ConvTranspose2d(
-                in_channels=planes,
-                out_channels=planes,
-                kernel_size=kernel,
-                stride=2,
-                padding=padding,
-                output_padding=output_padding,
-                bias=self.deconv_with_bias,
-            )
-            fill_up_weights(up)
-
-            layers.append(fc)
-            layers.append(nn.BatchNorm2d(planes, momentum=BN_MOMENTUM))
-            layers.append(nn.ReLU(inplace=True))
-            layers.append(up)
             layers.append(nn.BatchNorm2d(planes, momentum=BN_MOMENTUM))
             layers.append(nn.ReLU(inplace=True))
             self.inplanes = planes
@@ -277,17 +235,44 @@ class PoseResNet(nn.Module):
             ret[head] = self.__getattr__(head)(x)
         return [ret]
 
-    def init_weights(self, num_layers):
-        if 1:
+    def init_weights(self, num_layers, pretrained=True):
+        if pretrained:
+            # print('=> init resnet deconv model_weights from normal distribution')
+            for _, m in self.deconv_layers.named_modules():
+                if isinstance(m, nn.ConvTranspose2d):
+                    # print('=> init {}.weight as normal(0, 0.001)'.format(name))
+                    # print('=> init {}.bias as 0'.format(name))
+                    nn.init.normal_(m.weight, std=0.001)
+                    if self.deconv_with_bias:
+                        nn.init.constant_(m.bias, 0)
+                elif isinstance(m, nn.BatchNorm2d):
+                    # print('=> init {}.weight as 1'.format(name))
+                    # print('=> init {}.bias as 0'.format(name))
+                    nn.init.constant_(m.weight, 1)
+                    nn.init.constant_(m.bias, 0)
+            # print('=> init final conv model_weights from normal distribution')
+            for head in self.heads:
+                final_layer = self.__getattr__(head)
+                for i, m in enumerate(final_layer.modules()):
+                    if isinstance(m, nn.Conv2d):
+                        # nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                        # print('=> init {}.weight as normal(0, 0.001)'.format(name))
+                        # print('=> init {}.bias as 0'.format(name))
+                        if m.weight.shape[0] == self.heads[head]:
+                            if "hm" in head:
+                                nn.init.constant_(m.bias, -2.19)
+                            else:
+                                nn.init.normal_(m.weight, std=0.001)
+                                nn.init.constant_(m.bias, 0)
+            # pretrained_state_dict = torch.load(pretrained)
             url = model_urls["resnet{}".format(num_layers)]
             pretrained_state_dict = model_zoo.load_url(url)
             print("=> loading pretrained model {}".format(url))
             self.load_state_dict(pretrained_state_dict, strict=False)
-            print("=> init deconv weights from normal distribution")
-            for name, m in self.deconv_layers.named_modules():
-                if isinstance(m, nn.BatchNorm2d):
-                    nn.init.constant_(m.weight, 1)
-                    nn.init.constant_(m.bias, 0)
+        else:
+            print("=> imagenet pretrained model dose not exist")
+            print("=> please download it first")
+            raise ValueError("imagenet pretrained model does not exist")
 
 
 resnet_spec = {
@@ -299,9 +284,9 @@ resnet_spec = {
 }
 
 
-def get_pose_net(num_layers, heads, head_conv=256):
+def get_pose_net(num_layers, heads, head_conv):
     block_class, layers = resnet_spec[num_layers]
 
     model = PoseResNet(block_class, layers, heads, head_conv=head_conv)
-    model.init_weights(num_layers)
+    model.init_weights(num_layers, pretrained=True)
     return model
