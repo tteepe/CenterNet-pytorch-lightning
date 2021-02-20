@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 
 from centernet import CenterNet
 from datasets.coco import CocoDetection
-from decode.utils import sigmoid_clamped
+from utils.decode import sigmoid_clamped
 
 from transforms import CategoryIdToClass, ComposeSample, ImageAugmentation
 from models import create_model

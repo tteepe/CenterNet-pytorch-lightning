@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from centernet import CenterNet
 from datasets.coco import CocoDetection
 from decode.ctdet import ctdet_decode
-from decode.utils import sigmoid_clamped
+from utils.decode import sigmoid_clamped
 from utils.losses import RegL1Loss, FocalLoss
 from transforms import CategoryIdToClass, ImageAugmentation, ComposeSample
 from transforms.ctdet import CenterDetectionSample
