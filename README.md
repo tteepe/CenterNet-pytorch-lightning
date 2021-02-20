@@ -9,9 +9,10 @@ My attempt at a cleaner implementation of the glorious [CenterNet](https://githu
 ### Features
 - Decoupled backbones and heads for easier backbone integration
 - Split sample creation into image augmentation (with [imgaug](https://github.com/aleju/imgaug)) and actual sample creation
-- Comes shipped with PyTorch Lightning modules but can also be used with good ol' plain PyTorch
+- Comes shipped with Lightning modules but can also be used with good ol' plain PyTorch
 - Stripped all code not used to reproduce the results in the paper
 - Requires significantly less memory
+- Introduced more meaningful variable names
 
 ### ToDos
 Pull requests are welcome!
@@ -65,14 +66,3 @@ trainer.fit(model, train, val)
 # test using the best model!
 trainer.test(test_dataloaders=test)
 ```
-
-### Citation
-If you like this work want to cite this package feel free to use this:
-```
-@article{teepe2021centernet,
-  title={Your Title},
-  author={Your team},
-  journal={Location},
-  year={Year}
-}
-```   
