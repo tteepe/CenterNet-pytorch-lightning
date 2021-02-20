@@ -11,13 +11,15 @@ My attempt at a cleaner implementation of the glorious [CenterNet](https://githu
 - Split sample creation into image augmentation (with [imgaug](https://github.com/aleju/imgaug)) and actual sample creation
 - Comes shipped with PyTorch Lightning modules but can also be used with good ol' plain PyTorch
 - Stripped all code not used to reproduce the results in the paper
+- Requires significantly less memory
 
 ### ToDos
 Pull requests are welcome!
 
-- [ ] Add 3D bounding box detection
-- [ ] Add ExtremeNet detection
-
+- [ ] 3D bounding box detection
+- [ ] ExtremeNet detection
+- [ ] Pascal VOC dataset
+- [ ] Augmented detection tests
 
 ## How to run   
 First, install dependencies   

@@ -6,13 +6,14 @@ import os
 import pytorch_lightning as pl
 import torch
 import torchvision
+from pycocotools.cocoeval import COCOeval
 from torch.utils.data import DataLoader
 
 from centernet import CenterNet
 from datasets.coco import CocoDetection
 from decode.ctdet import ctdet_decode
 from decode.utils import sigmoid_clamped
-from models.losses import RegL1Loss, FocalLoss
+from utils.losses import RegL1Loss, FocalLoss
 from transforms import CategoryIdToClass, ImageAugmentation, ComposeSample
 from transforms.ctdet import CenterDetectionSample
 from transforms.sample import PoseFlip
@@ -24,7 +25,7 @@ class CenterNetDetection(CenterNet):
         self.save_hyperparameters()
 
         self.criterion = FocalLoss()
-        self.criterion_regularizer = RegL1Loss()
+        self.criterion_regression = RegL1Loss()
         self.criterion_width_height = RegL1Loss()
 
     def forward(self, x):
@@ -40,7 +41,7 @@ class CenterNetDetection(CenterNet):
 
             hm_loss += self.criterion(output['hm'], target['hm'])
             wh_loss += self.criterion_width_height(output['wh'], target['reg_mask'], target['ind'], target['wh'])
-            off_loss += self.criterion_regularizer(output['reg'], target['reg_mask'], target['ind'], target['reg'])
+            off_loss += self.criterion_regression(output['reg'], target['reg_mask'], target['ind'], target['reg'])
 
         loss = (self.hparams.hm_weight * hm_loss +
                 self.hparams.wh_weight * wh_loss +
@@ -48,27 +49,23 @@ class CenterNetDetection(CenterNet):
         loss_stats = {'loss': loss, 'hm_loss': hm_loss, 'wh_loss': wh_loss, 'off_loss': off_loss}
         return loss, loss_stats
 
-    def validation_step(self, batch, batch_idx):
-        img, target = batch
-        outputs = self(img)
-        loss, loss_stats = self.loss(outputs, target)
-
-        return {'val_loss': loss, 'loss_stats': loss_stats, 'outputs': outputs}
-
-    def validation_epoch_end(self, outputs):
-        loss_val = torch.stack([x['val_loss'] for x in outputs]).mean()
-        self.log(f"val/loss", loss_val)
-
+    def test_step_end(self, parts):
+        # TODO
         detections = []
-        for output in outputs:
-            output = output['outputs'][-1]
+        print(parts)
+        for output in parts:
+            output = output['output'][-1]
             dets = ctdet_decode(output['hm'].sigmoid_(), output['wh'], reg=output['reg'])
+            dets = dets.detach().cpu().numpy()
+            dets = dets.reshape(1, -1, dets.shape[2]).squeeze()
 
             detections.append(dets)
 
-    def test_step(self, batch, batch_idx):
-        img, _ = batch
-        outputs = self(img)
+        coco_detections = self.convert_eval_format(detections)
+        coco_eval = COCOeval(self.coco, coco_detections, "bbox")
+        coco_eval.evaluate()
+        coco_eval.accumulate()
+        coco_eval.summarize()
 
 
 def cli_main():
@@ -149,9 +146,10 @@ def cli_main():
     # model
     # ------------
     heads = {'hm': CocoDetection.num_classes, 'wh': 2, 'reg': 2}
-    if args.head_conv == -1:  # init default head_conv
-        args.head_conv = 256 if 'dla' in args.arch else 64
+    if 'dla' in args.arch:
+        args.head_conv = 256
     model = CenterNetDetection(args.arch, heads, args.head_conv, args.learning_rate)
+    model.load_model_weights("../model_weights/ctdet_coco_dla_1x.pth")
 
     # ------------
     # training
@@ -162,7 +160,7 @@ def cli_main():
     # ------------
     # testing
     # ------------
-    trainer.test(test_dataloaders=test_loader)
+    # trainer.test(test_dataloaders=test_loader)
 
 
 if __name__ == '__main__':

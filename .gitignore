@@ -124,5 +124,4 @@ venv.bak/
 
 # seed CenterNet
 lightning_logs/
-MNIST
 .DS_Store

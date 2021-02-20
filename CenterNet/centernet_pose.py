@@ -14,11 +14,11 @@ from datasets.coco import CocoDetection
 from decode.utils import sigmoid_clamped
 
 from transforms import CategoryIdToClass, ComposeSample, ImageAugmentation
-from models.losses import RegL1Loss, FocalLoss, RegWeightedL1Loss
 from models import create_model
+from utils.losses import RegL1Loss, FocalLoss, RegWeightedL1Loss
 from transforms.ctdet import CenterDetectionSample
 from transforms.multi_pose import MultiPoseSample
-from transforms.sample import MultiSampleTransform
+from transforms.sample import MultiSampleTransform, PoseFlip
 
 
 class CenterNetPose(CenterNet):
@@ -42,7 +42,7 @@ class CenterNetPose(CenterNet):
         self.criterion = FocalLoss()
         self.criterion_heatmap_heatpoints = FocalLoss()
         self.criterion_keypoint = RegWeightedL1Loss()
-        self.criterion_regularizer = RegL1Loss()
+        self.criterion_regression = RegL1Loss()
         self.criterion_width_height = RegL1Loss()
 
     def forward(self, x):
@@ -69,7 +69,7 @@ class CenterNetPose(CenterNet):
             off_loss += self.criterion_regularizer(
                 output["reg"], target["reg_mask"], target["ind"], target["reg"]
             )
-            hp_offset_loss += self.criterion_regularizer(
+            hp_offset_loss += self.criterion_regression(
                 output["hp_offset"],
                 target["hp_mask"],
                 target["hp_ind"],
@@ -149,6 +149,7 @@ def cli_main():
             ])
         ),
         CategoryIdToClass(CocoDetection.valid_ids),
+        PoseFlip(0.5),
         MultiSampleTransform([
             CenterDetectionSample(),
             MultiPoseSample()

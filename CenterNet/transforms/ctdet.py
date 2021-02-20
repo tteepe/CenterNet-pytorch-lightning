@@ -42,11 +42,11 @@ class CenterDetectionSample:
         output_h = input_h // self.down_ratio
         output_w = input_w // self.down_ratio
 
-        hm = torch.zeros((self.num_classes, output_w, output_h), dtype=torch.float32)
-        wh = torch.zeros((self.max_objects, 2), dtype=torch.float32)
-        reg = torch.zeros((self.max_objects, 2), dtype=torch.float32)
-        ind = torch.zeros(self.max_objects, dtype=torch.int64)
-        reg_mask = torch.zeros(self.max_objects, dtype=torch.bool)
+        heatmap = torch.zeros((self.num_classes, output_w, output_h), dtype=torch.float32)
+        width_height = torch.zeros((self.max_objects, 2), dtype=torch.float32)
+        regression = torch.zeros((self.max_objects, 2), dtype=torch.float32)
+        regression_mask = torch.zeros(self.max_objects, dtype=torch.bool)
+        indices = torch.zeros(self.max_objects, dtype=torch.int64)
 
         draw_gaussian = (
             draw_msra_gaussian if self.gaussian_type == "msra" else draw_umich_gaussian
@@ -69,12 +69,12 @@ class CenterDetectionSample:
                 ct = torch.FloatTensor([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2])
                 ct_int = ct.to(torch.int32)
 
-                draw_gaussian(hm[cls_id], ct_int, radius)
-                wh[k] = torch.tensor([1.0 * w, 1.0 * h])
-                ind[k] = ct_int[1] * output_w + ct_int[0]
-                reg[k] = ct - ct_int
-                reg_mask[k] = 1
+                draw_gaussian(heatmap[cls_id], ct_int, radius)
+                width_height[k] = torch.tensor([1.0 * w, 1.0 * h])
+                indices[k] = ct_int[1] * output_w + ct_int[0]
+                regression[k] = ct - ct_int
+                regression_mask[k] = 1
 
-        ret = {"hm": hm, "reg_mask": reg_mask, "ind": ind, "wh": wh, "reg": reg}
+        ret = {"hm": heatmap, "reg_mask": regression_mask, "ind": indices, "wh": width_height, "reg": regression}
 
         return img, ret
