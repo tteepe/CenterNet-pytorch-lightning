@@ -17,7 +17,7 @@ def test_image_augmentation():
     )
 
     img = (255 * np.random.rand(512, 512, 3)).astype(np.uint8)
-    with open('data/coco_annotation.json') as json_file:
+    with open('tests/data/coco_annotation.json') as json_file:
         coco_annotation = json.load(json_file)
 
     img_aug, ann_aug = img_aug(img, coco_annotation)
