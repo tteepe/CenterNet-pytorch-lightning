@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torchvision
 import imgaug.augmenters as iaa
+import pytest
 
 from decode.ctdet import ctdet_decode
 from transforms import CategoryIdToClass, ComposeSample, ImageAugmentation
@@ -26,22 +27,29 @@ def test_cdet_encoding_decoding():
     ann_center = np.zeros((len(coco_annotation), 2))
     for i in range(len(coco_annotation)):
         x, y, w, h = coco_annotation[i]["bbox"]
-        ann_center[i, 0] = int(x + w/2)
-        ann_center[i, 1] = int(y + h/2)
+        ann_center[i, 0] = x + w/2
+        ann_center[i, 1] = y + h/2
 
     img, output = sample_encoding(img, coco_annotation)
 
     heatmap = output['hm'].unsqueeze(0)
     batch, cat, height, width = heatmap.size()
-    wh = torch.zeros((batch, 2, width, height))
-    reg = torch.zeros((batch, 2, width, height))
+    wh = torch.zeros((batch, width, height, 2))
+    reg = torch.zeros((batch, width, height, 2))
 
-    detections = ctdet_decode(heatmap.sigmoid_(), wh, reg).squeeze().numpy()
+    indices = output['ind'].unsqueeze(0)
+    indices_x = indices % width
+    indices_y = indices // width
+    wh[:, indices_y, indices_x] = output['wh'].unsqueeze(0)
+    wh = wh.permute(0, 3, 1, 2)
+    reg[:, indices_y, indices_x] = output['reg'].unsqueeze(0)
+    reg = reg.permute(0, 3, 1, 2)
+    detections = ctdet_decode(heatmap, wh, reg).squeeze().numpy()
     detections = 4 * detections[detections[:, 4] > 0.5]
 
-    center = detections[:, :2].astype(np.int)
+    center = (detections[:, :2] + detections[:, 2:4]) / 2.
 
-    assert abs(np.sum(center) - np.sum(ann_center)) <= 10
+    assert abs(np.sum(center) - np.sum(ann_center)) == pytest.approx(0., abs=1e-3)
 
 
 if __name__ == "__main__":
