@@ -3,7 +3,7 @@ from .image import *
 
 
 class ComposeSample:
-    """Composes several transforms together.
+    """Composes several transforms together on sample of image and target
 
     Args:
         transforms (list of ``Transform`` objects): list of transforms to compose.

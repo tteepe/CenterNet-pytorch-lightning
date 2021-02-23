@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 setup(
     name='CenterNet',
     version='0.0.0',
-    description='Re-implementation of CenterNet for PyTorchLightning.',
+    description='Refactored version of CenterNet (Objects as Points). With PyTorch Lightning and imgaug.',
     author='Torben Teepe',
     author_email='torben@tee.pe',
     url='https://github.com/tteepe/CenterNet-pytorch-lightning',

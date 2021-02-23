@@ -42,12 +42,6 @@ class MultiPoseSample:
         output_h = input_h // self.down_ratio
         output_w = input_w // self.down_ratio
 
-        # hm = torch.zeros((self.num_classes, output_w, output_h), dtype=torch.float32)
-        # wh = torch.zeros((self.max_objects, 2), dtype=torch.float32)
-        # reg = torch.zeros((self.max_objects, 2), dtype=torch.float32)
-        # ind = torch.zeros(self.max_objects, dtype=torch.int64)
-        # reg_mask = torch.zeros(self.max_objects, dtype=torch.uint8)
-
         heatmap_keypoints = torch.zeros((self.num_joints, output_w, output_h), dtype=torch.float32)
         keypoints = torch.zeros((self.max_objects, self.num_joints * 2), dtype=torch.float32)
         keypoints_mask = torch.zeros((self.max_objects, self.num_joints * 2), dtype=torch.bool)

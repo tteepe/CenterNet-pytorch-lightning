@@ -15,12 +15,11 @@ My attempt at a cleaner implementation of the glorious [CenterNet](https://githu
 - Introduced more meaningful variable names
 
 ### ToDos
-Pull requests are welcome!
+Some features of the original repository are not implemented yet but pull requests are welcome!
 
 - [ ] 3D bounding box detection
 - [ ] ExtremeNet detection
 - [ ] Pascal VOC dataset
-- [ ] Augmented detection tests
 
 ## How to run   
 First, install dependencies   

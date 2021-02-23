@@ -13,6 +13,7 @@ class CenterNet(pl.LightningModule):
 
         self.model = create_model(arch, heads, head_conv)
 
+        self.down_ratio = 4
         # Backbone specific args
         self.padding = 127 if 'hourglass' in arch else 31
 
@@ -54,9 +55,6 @@ class CenterNet(pl.LightningModule):
             stat_mean = torch.stack([x['loss_stats'][stat] for x in batch_parts_outputs]).mean()
             self.log(f"val/{stat}", stat_mean)
 
-    # def test_step(self, batch, batch_idx):
-    #     pass
-
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
 
@@ -76,13 +74,7 @@ class CenterNet(pl.LightningModule):
             help="conv layer channels for output head"
             "0 for no conv layer, 64 for resnets and 256 for dla.",
         )
-        parser.add_argument(
-            "--down_ratio",
-            type=int,
-            default=4,
-            help="output stride. Currently only supports 4.",
-        )
 
-        parser.add_argument("--learning_rate", type=float, default=2.5e-4)
+        parser.add_argument("--learning_rate", type=float, default=25e-5)
 
         return parser
