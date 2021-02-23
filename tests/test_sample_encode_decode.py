@@ -21,7 +21,7 @@ def test_cdet_encoding_decoding():
     ])
 
     img = (255 * np.random.rand(512, 512, 3)).astype(np.uint8)
-    with open('data/coco_annotation.json') as json_file:
+    with open('tests/data/coco_annotation.json') as json_file:
         coco_annotation = json.load(json_file)
 
     ann_center = np.zeros((len(coco_annotation), 2))
