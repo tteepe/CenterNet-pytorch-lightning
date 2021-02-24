@@ -8,16 +8,18 @@ from models import create_model
 
 
 class CenterNet(pl.LightningModule):
-    def __init__(self, arch, heads, head_conv):
+    def __init__(self, arch, heads):
         super().__init__()
 
-        self.model = create_model(arch, heads, head_conv)
-
-        self.down_ratio = 4
         # Backbone specific args
+        self.head_conv = 256 if 'dla' in arch else 64
         self.padding = 127 if 'hourglass' in arch else 31
 
-    def load_model_weights(self, model_weight_path, strict=True):
+        self.model = create_model(arch, heads, self.head_conv)
+
+        self.down_ratio = 4
+
+    def load_pretrained_weights(self, model_weight_path, strict=True):
         checkpoint = torch.load(model_weight_path)
         state_dict = {k.replace("module.", ""): v for k, v in checkpoint['state_dict'].items()}
         self.model.load_state_dict(state_dict, strict=strict)
@@ -50,6 +52,9 @@ class CenterNet(pl.LightningModule):
         if len(batch_parts_outputs) == 0:
             return
 
+        val_loss = torch.stack([x['loss'] for x in batch_parts_outputs]).mean()
+        self.log(f"val_loss", val_loss)
+
         loss_stats = batch_parts_outputs[0]['loss_stats'].keys()
         for stat in loss_stats:
             stat_mean = torch.stack([x['loss_stats'][stat] for x in batch_parts_outputs]).mean()
@@ -66,13 +71,6 @@ class CenterNet(pl.LightningModule):
             default="dla_34",
             help="model architecture. Currently tested "
             "res_18 | res_101 | resdcn_18 | resdcn_101 | dlav0_34 | dla_34 | hourglass",
-        )
-        parser.add_argument(
-            "--head_conv",
-            type=int,
-            default=64,
-            help="conv layer channels for output head"
-            "0 for no conv layer, 64 for resnets and 256 for dla.",
         )
 
         parser.add_argument("--learning_rate", type=float, default=25e-5)

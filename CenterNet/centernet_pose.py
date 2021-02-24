@@ -1,16 +1,14 @@
 import os
 from argparse import ArgumentParser
 
-import imgaug as ia
 import imgaug.augmenters as iaa
 
-import torch
 import torchvision
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
+from torchvision.datasets import CocoDetection
 
 from centernet import CenterNet
-from datasets.coco import CocoDetection
 from utils.decode import sigmoid_clamped
 
 from transforms import CategoryIdToClass, ComposeSample, ImageAugmentation
@@ -25,8 +23,6 @@ class CenterNetPose(CenterNet):
     def __init__(
         self,
         arch,
-        heads,
-        head_conv,
         learning_rate=1e-4,
         hm_weight=1,
         wh_weight=1,
@@ -34,10 +30,9 @@ class CenterNetPose(CenterNet):
         hp_weight=1,
         hm_hp_weight=1,
     ):
-        super().__init__(arch, heads, head_conv)
+        heads = {"hm": 1, "wh": 2, "reg": 2, "hm_hp": 17, "hp_offset": 2, "hps": 34}
+        super().__init__(arch, heads)
         self.save_hyperparameters()
-
-        self.model = create_model(arch, heads, head_conv)
 
         self.criterion = FocalLoss()
         self.criterion_heatmap_heatpoints = FocalLoss()
@@ -189,10 +184,7 @@ def cli_main():
     # ------------
     # model
     # ------------
-    heads = {"hm": 1, "wh": 2, "reg": 2, "hm_hp": 17, "hp_offset": 2, "hps": 34}
-    if args.head_conv == -1:  # init default head_conv
-        args.head_conv = 256 if 'dla' in args.arch else 64
-    model = CenterNetPose(args.arch, heads, args.head_conv, args.learning_rate)
+    model = CenterNetPose(args.arch, args.learning_rate)
 
     # ------------
     # training

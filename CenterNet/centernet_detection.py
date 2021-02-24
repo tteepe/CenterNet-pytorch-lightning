@@ -1,41 +1,72 @@
+import os
 from argparse import ArgumentParser
+import numpy as np
 import imgaug as ia
 import imgaug.augmenters as iaa
-import numpy as np
-import os
-import pytorch_lightning as pl
 import torch
 import torchvision
-from pycocotools.cocoeval import COCOeval
+import torch.nn.functional as F
+import torchvision.transforms.functional as VF
+from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
+import pytorch_lightning as pl
+from pycocotools.cocoeval import COCOeval
+from torchvision.datasets import CocoDetection
 
 from centernet import CenterNet
-from datasets.coco import CocoDetection
-from decode.ctdet import ctdet_decode
 from transforms import CategoryIdToClass, ImageAugmentation, ComposeSample
 from transforms.ctdet import CenterDetectionSample
-from transforms.sample import PoseFlip
-from utils.decode import sigmoid_clamped
 from utils.losses import RegL1Loss, FocalLoss
+from utils.decode import sigmoid_clamped
+from decode.ctdet import ctdet_decode
 from utils.nms import soft_nms
 
 
 class CenterNetDetection(CenterNet):
-    def __init__(self, arch, heads, head_conv, learning_rate=1e-4, hm_weight=1, wh_weight=1, off_weight=0.1,
-                 test_augmentation="none", num_classes=80, test_coco=None):
-        super().__init__(arch, heads, head_conv)
-        self.save_hyperparameters()
+    mean = [0.408, 0.447, 0.470]
+    std = [0.289, 0.274, 0.278]
+    max_objs = 128
+    valid_ids = [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13,
+        14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+        24, 25, 27, 28, 31, 32, 33, 34, 35, 36,
+        37, 38, 39, 40, 41, 42, 43, 44, 46, 47,
+        48, 49, 50, 51, 52, 53, 54, 55, 56, 57,
+        58, 59, 60, 61, 62, 63, 64, 65, 67, 70,
+        72, 73, 74, 75, 76, 77, 78, 79, 80, 81,
+        82, 84, 85, 86, 87, 88, 89, 90
+    ]
 
+    def __init__(
+        self,
+        arch,
+        learning_rate=1e-4,
+        hm_weight=1,
+        wh_weight=1,
+        off_weight=0.1,
+        num_classes=80,
+        test_coco=None,
+        test_scales=None,
+        test_flip=False,
+    ):
+        self.arch = arch
         self.num_classes = num_classes
+
+        heads = {"hm": num_classes, "wh": 2, "reg": 2}
+        super().__init__(arch, heads)
+
+        # Test
         self.test_coco = test_coco
         self.test_coco_ids = list(sorted(self.test_coco.imgs.keys()))
         self.test_max_per_image = 100
-        self.test_scales = [0.5, 0.75, 1, 1.25, 1.5] if test_augmentation == "multi-scale" else [1]
-        self.test_flip = test_augmentation == "flip"
+        self.test_scales = [1] if test_scales is None else test_scales
+        self.test_flip = test_flip
 
         self.criterion = FocalLoss()
         self.criterion_regression = RegL1Loss()
         self.criterion_width_height = RegL1Loss()
+
+        self.save_hyperparameters()
 
     def forward(self, x):
         return self.model.forward(x)
@@ -46,16 +77,27 @@ class CenterNetDetection(CenterNet):
 
         for s in range(num_stacks):
             output = outputs[s]
-            output['hm'] = sigmoid_clamped(output['hm'])
+            output["hm"] = sigmoid_clamped(output["hm"])
 
-            hm_loss += self.criterion(output['hm'], target['hm'])
-            wh_loss += self.criterion_width_height(output['wh'], target['reg_mask'], target['ind'], target['wh'])
-            off_loss += self.criterion_regression(output['reg'], target['reg_mask'], target['ind'], target['reg'])
+            hm_loss += self.criterion(output["hm"], target["hm"])
+            wh_loss += self.criterion_width_height(
+                output["wh"], target["reg_mask"], target["ind"], target["wh"]
+            )
+            off_loss += self.criterion_regression(
+                output["reg"], target["reg_mask"], target["ind"], target["reg"]
+            )
 
-        loss = (self.hparams.hm_weight * hm_loss +
-                self.hparams.wh_weight * wh_loss +
-                self.hparams.off_weight * off_loss) / num_stacks
-        loss_stats = {'loss': loss, 'hm_loss': hm_loss, 'wh_loss': wh_loss, 'off_loss': off_loss}
+        loss = (
+            self.hparams.hm_weight * hm_loss
+            + self.hparams.wh_weight * wh_loss
+            + self.hparams.off_weight * off_loss
+        ) / num_stacks
+        loss_stats = {
+            "loss": loss,
+            "hm_loss": hm_loss,
+            "wh_loss": wh_loss,
+            "off_loss": off_loss,
+        }
         return loss, loss_stats
 
     def test_step(self, batch, batch_idx):
@@ -63,38 +105,37 @@ class CenterNetDetection(CenterNet):
         image_id = self.test_coco_ids[batch_idx]
 
         # Test augmentation
-        augmented_images = []
+        images = []
         meta = []
         for scale in self.test_scales:
             _, _, height, width = img.shape
-            new_height = (int(height * scale) | self.padding) + 1
-            new_width = (int(width * scale) | self.padding) + 1
+            new_height = int(height * scale)
+            new_width = int(width * scale)
+            pad_top_bottom = ((new_height | self.padding) + 1 - new_height) // 2
+            pad_left_right = ((new_width | self.padding) + 1 - new_width) // 2
 
-            scaled_img = torchvision.transforms.Resize((new_height, new_width))(img)
+            img = VF.resize(img, [new_height, new_width])
+            img = F.pad(
+                img, (pad_left_right, pad_left_right, pad_top_bottom, pad_top_bottom)
+            )
+            img = VF.normalize(img, self.mean, self.std)
 
-            augmented_images.append(scaled_img)
-            meta.append({
-                "original_size": (height, width),
-                "input_size": (new_height, new_height),
-                "scale": (height/new_height, width/new_width),
-            })
+            if self.test_flip:
+                img = torch.cat([img, VF.hflip(img)])
 
-        flip = torchvision.transforms.RandomHorizontalFlip(1)
-        if self.test_flip:
-            flipped_images = [flip(img) for img in augmented_images]
-            augmented_images.extend(flipped_images)
+            images.append(img)
+            meta.append({"scale": scale, "padding": [pad_left_right, pad_top_bottom]})
 
         # Forward
         outputs = []
-        for image in augmented_images:
-            outputs.append(self(image)[0])
+        for image in images:
+            outputs.append(self(image)[-1])
 
         if self.test_flip:
-            size = len(outputs) // 2
-            for i in range(size):
-                outputs[i]["hm"] = (outputs[i]["hm"] + flip(outputs[i + size]["hm"])) / 2
-                outputs[i]["wh"] = (outputs[i]["wh"] + flip(outputs[i + size]["wh"])) / 2
-            outputs = outputs[:size]
+            for output in outputs:
+                output["hm"] = (output["hm"][0:1] + VF.hflip(output["hm"][1:2])) / 2
+                output["wh"] = (output["wh"][0:1] + VF.hflip(output["wh"][1:2])) / 2
+                output["reg"] = output["reg"][0:1]
 
         return image_id, outputs, meta
 
@@ -106,20 +147,24 @@ class CenterNetDetection(CenterNet):
             output = outputs[i]
             meta = metas[i]
 
-            dets = ctdet_decode(output['hm'].sigmoid_(), output['wh'], reg=output['reg']).cpu().detach().squeeze()
+            detection = ctdet_decode(
+                output["hm"].sigmoid_(), output["wh"], reg=output["reg"]
+            )
+            detection = detection.cpu().detach().squeeze()
 
-            # Scale coordinates to original image
-            height_scale, width_scale = meta["scale"]
-            height_scale, width_scale = height_scale * self.down_ratio, width_scale * self.down_ratio
-            scales = torch.FloatTensor([width_scale, height_scale, width_scale, height_scale])
-            dets[:, :4] = dets[:, :4] * scales
+            # Transform detection to original image
+            padding = torch.FloatTensor(meta["padding"])
+            detection[:, :4] *= self.down_ratio  # Scale to input
+            detection[:, :2] -= padding  # Remove pad x1,y1
+            detection[:, 2:4] -= padding  # Remove pad x2,y2
+            detection[:, :4] /= meta["scale"]  # Compensate scale
 
             # Group detections by class
             class_predictions = {}
-            classes = dets[:, -1]
+            classes = detection[:, -1]
             for j in range(self.num_classes):
-                indices = (classes == j)
-                class_predictions[j + 1] = dets[indices, :5].numpy().reshape(-1, 5)
+                indices = classes == j
+                class_predictions[j + 1] = detection[indices, :5].numpy().reshape(-1, 5)
 
             detections.append(class_predictions)
 
@@ -132,13 +177,13 @@ class CenterNetDetection(CenterNet):
                 keep_indices = soft_nms(boxes, Nt=0.5, method=2)
                 results[j] = boxes[keep_indices]
 
-        # Keep only k-best detections
+        # Keep only best detections
         scores = np.hstack([results[j][:, 4] for j in range(1, self.num_classes + 1)])
         if len(scores) > self.test_max_per_image:
             kth = len(scores) - self.test_max_per_image
             thresh = np.partition(scores, kth)[kth]
             for j in range(1, self.num_classes + 1):
-                keep_indices = (results[j][:, 4] >= thresh)
+                keep_indices = results[j][:, 4] >= thresh
                 results[j] = results[j][keep_indices]
 
         return image_id, results
@@ -152,7 +197,7 @@ class CenterNetDetection(CenterNet):
                 if box.shape[0] == 0:
                     continue
 
-                category_id = CocoDetection.valid_ids[class_index - 1]
+                category_id = self.valid_ids[class_index - 1]
                 category_ids = np.repeat(category_id, box.shape[0]).reshape((-1, 1))
                 image_ids = np.repeat(image_id, box.shape[0]).reshape((-1, 1))
 
@@ -170,22 +215,18 @@ class CenterNetDetection(CenterNet):
         coco_eval.accumulate()
         coco_eval.summarize()
 
-        self.log("test/ap", coco_eval.stats[0])
-        self.log("test/ap_50", coco_eval.stats[1])
-        self.log("test/ap_75", coco_eval.stats[2])
-        self.log("test/ap_S", coco_eval.stats[3])
-        self.log("test/ap_M", coco_eval.stats[4])
-        self.log("test/ap_L", coco_eval.stats[5])
+        prefix = ""
+        if len(self.test_scales) > 1:
+            prefix += "multi-scale_"
+        if self.test_flip:
+            prefix += "flip_"
 
-    @staticmethod
-    def add_model_specific_args(parent_parser):
-        parent_parser = CenterNet.add_model_specific_args(parent_parser)
-
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument("--test_augmentation",
-                            default="none",
-                            choices=["none", "flip", "multi-scale"])
-        return parser
+        self.log(f"test/{prefix}ap", coco_eval.stats[0])
+        self.log(f"test/{prefix}ap_50", coco_eval.stats[1])
+        self.log(f"test/{prefix}ap_75", coco_eval.stats[2])
+        self.log(f"test/{prefix}ap_S", coco_eval.stats[3])
+        self.log(f"test/{prefix}ap_M", coco_eval.stats[4])
+        self.log(f"test/{prefix}ap_L", coco_eval.stats[5])
 
 
 def cli_main():
@@ -196,11 +237,12 @@ def cli_main():
     # args
     # ------------
     parser = ArgumentParser()
-    parser.add_argument('image_root')
-    parser.add_argument('annotation_root')
+    parser.add_argument("image_root")
+    parser.add_argument("annotation_root")
 
-    parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--num_workers', default=8, type=int)
+    parser.add_argument("--pretrained_weights_path")
+    parser.add_argument("--batch_size", default=32, type=int)
+    parser.add_argument("--num_workers", default=8, type=int)
     parser = pl.Trainer.add_argparse_args(parser)
     parser = CenterNetDetection.add_model_specific_args(parser)
     args = parser.parse_args()
@@ -208,96 +250,129 @@ def cli_main():
     # ------------
     # data
     # ------------
-    train_transform = ComposeSample([
-        ImageAugmentation(
-            iaa.Sequential([
-                iaa.Fliplr(0.5),
-                iaa.Sometimes(0.5, iaa.GaussianBlur(sigma=(0, 0.5))),
-                iaa.LinearContrast((0.75, 1.5)),
-                iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5),
-                iaa.Multiply((0.8, 1.2), per_channel=0.1),
-                iaa.Affine(
-                    scale={"x": (0.6, 1.4), "y": (0.6, 1.4)},
-                    translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
-                    rotate=(-5, 5),
-                    shear=(-3, 3)
+    train_transform = ComposeSample(
+        [
+            ImageAugmentation(
+                iaa.Sequential(
+                    [
+                        iaa.Fliplr(0.5),
+                        iaa.Sometimes(0.5, iaa.GaussianBlur(sigma=(0, 0.5))),
+                        iaa.LinearContrast((0.75, 1.5)),
+                        iaa.AdditiveGaussianNoise(
+                            loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5
+                        ),
+                        iaa.Multiply((0.8, 1.2), per_channel=0.1),
+                        iaa.Affine(
+                            scale={"x": (0.6, 1.4), "y": (0.6, 1.4)},
+                            translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
+                            rotate=(-5, 5),
+                            shear=(-3, 3),
+                        ),
+                        iaa.PadToFixedSize(width=512, height=512),
+                        iaa.CropToFixedSize(width=512, height=512),
+                    ]
                 ),
-                iaa.PadToFixedSize(width=512, height=512),
-                iaa.CropToFixedSize(width=512, height=512)
-            ]),
-            torchvision.transforms.Compose([
-                torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize(CocoDetection.mean, CocoDetection.std, inplace=True)
-            ])
-        ),
-        CategoryIdToClass(CocoDetection.valid_ids),
-        PoseFlip(0.5),
-        CenterDetectionSample()
-    ])
+                torchvision.transforms.Compose(
+                    [
+                        torchvision.transforms.ToTensor(),
+                        torchvision.transforms.Normalize(
+                            CenterNetDetection.mean, CenterNetDetection.std
+                        ),
+                    ]
+                ),
+            ),
+            CategoryIdToClass(CenterNetDetection.valid_ids),
+            CenterDetectionSample(),
+        ]
+    )
 
-    valid_transform = ComposeSample([
-        ImageAugmentation(
-            iaa.Sequential([
-                iaa.PadToFixedSize(width=512, height=512),
-                iaa.CropToFixedSize(width=512, height=512)
-            ]),
-            torchvision.transforms.Compose([
-                torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize(CocoDetection.mean, CocoDetection.std, inplace=True)
-            ])
-        ),
-        CategoryIdToClass(CocoDetection.valid_ids),
-        CenterDetectionSample()
-    ])
+    valid_transform = ComposeSample(
+        [
+            ImageAugmentation(
+                iaa.Sequential(
+                    [
+                        iaa.PadToFixedSize(width=512, height=512),
+                        iaa.CropToFixedSize(width=512, height=512),
+                    ]
+                ),
+                torchvision.transforms.Compose(
+                    [
+                        torchvision.transforms.ToTensor(),
+                        torchvision.transforms.Normalize(
+                            CenterNetDetection.mean, CenterNetDetection.std
+                        ),
+                    ]
+                ),
+            ),
+            CategoryIdToClass(CenterNetDetection.valid_ids),
+            CenterDetectionSample(),
+        ]
+    )
 
-    test_transform = ComposeSample([
-        ImageAugmentation(
-            iaa.Identity(),
-            torchvision.transforms.Compose([
-                torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize(CocoDetection.mean, CocoDetection.std, inplace=True)
-            ])
-        )
-    ])
+    test_transform = ComposeSample(
+        [ImageAugmentation(img_transforms=torchvision.transforms.ToTensor())]
+    )
 
-    coco_train = CocoDetection(os.path.join(args.image_root, 'train2017'),
-                               os.path.join(args.annotation_root, 'instances_train2017.json'),
-                               transforms=train_transform)
+    coco_train = CocoDetection(
+        os.path.join(args.image_root, "train2017"),
+        os.path.join(args.annotation_root, "instances_train2017.json"),
+        transforms=train_transform,
+    )
 
-    coco_val = CocoDetection(os.path.join(args.image_root, 'val2017'),
-                             os.path.join(args.annotation_root, 'instances_val2017.json'),
-                             transforms=valid_transform)
+    coco_val = CocoDetection(
+        os.path.join(args.image_root, "val2017"),
+        os.path.join(args.annotation_root, "instances_val2017.json"),
+        transforms=valid_transform,
+    )
 
-    coco_test = CocoDetection(os.path.join(args.image_root, 'val2017'),
-                              os.path.join(args.annotation_root, 'instances_val2017.json'),
-                              transforms=test_transform)
+    coco_test = CocoDetection(
+        os.path.join(args.image_root, "val2017"),
+        os.path.join(args.annotation_root, "instances_val2017.json"),
+        transforms=test_transform,
+    )
 
-    train_loader = DataLoader(coco_train, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True)
-    val_loader = DataLoader(coco_val, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True)
-    test_loader = DataLoader(coco_test, batch_size=1, num_workers=0)
+    train_loader = DataLoader(
+        coco_train,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        pin_memory=True,
+    )
+    val_loader = DataLoader(
+        coco_val,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        pin_memory=True,
+    )
+    test_loader = DataLoader(coco_test, batch_size=1, num_workers=0, pin_memory=True)
 
     # ------------
     # model
     # ------------
-    heads = {'hm': CocoDetection.num_classes, 'wh': 2, 'reg': 2}
-    if 'dla' in args.arch:
-        args.head_conv = 256
-    model = CenterNetDetection(args.arch, heads, args.head_conv, args.learning_rate,
-                               test_augmentation=args.test_augmentation, num_classes=CocoDetection.num_classes,
-                               test_coco=coco_test.coco)
-    model.load_model_weights("../model_weights/ctdet_coco_dla_1x.pth")
+    model = CenterNetDetection(args.arch, args.learning_rate, test_coco=coco_test.coco)
+    if args.pretrained_weights_path:
+        model.load_pretrained_weights(args.pretrained_weights_path)
 
     # ------------
     # training
     # ------------
+    args.callbacks = [
+        ModelCheckpoint(
+            monitor="val_loss",
+            mode="min",
+            save_top_k=1,
+            dirpath="model_weights",
+            filename=args.arch + "detection-{epoch:02d}-{val_loss:.2f}",
+        )
+    ]
+
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(model, train_loader, val_loader)
 
     # ------------
     # testing
     # ------------
-    trainer.test(model, test_dataloaders=test_loader, ckpt_path=None)
+    trainer.test(model, test_dataloaders=test_loader)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli_main()

@@ -2,11 +2,11 @@ import cv2
 import numpy as np
 
 from imgaug.augmentables import Keypoint, KeypointsOnImage, BoundingBox, BoundingBoxesOnImage
-from imgaug.augmenters import Augmenter
+from imgaug.augmenters import Augmenter, Identity
 
 
 class ImageAugmentation:
-    def __init__(self, imgaug_augmenter: Augmenter, img_transforms=None, num_joints=17):
+    def __init__(self, imgaug_augmenter: Augmenter = Identity(), img_transforms=None, num_joints=17):
         self.ia_sequence = imgaug_augmenter
         self.img_transforms = img_transforms
         self.num_joints = num_joints
