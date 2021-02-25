@@ -114,17 +114,20 @@ class CenterNetDetection(CenterNet):
             pad_top_bottom = ((new_height | self.padding) + 1 - new_height) // 2
             pad_left_right = ((new_width | self.padding) + 1 - new_width) // 2
 
-            img = VF.resize(img, [new_height, new_width])
-            img = F.pad(
-                img, (pad_left_right, pad_left_right, pad_top_bottom, pad_top_bottom)
+            img_scaled = VF.resize(img, [new_height, new_width])
+            img_scaled = F.pad(
+                img_scaled, (pad_left_right, pad_left_right, pad_top_bottom, pad_top_bottom)
             )
-            img = VF.normalize(img, self.mean, self.std)
+            img_scaled = VF.normalize(img_scaled, self.mean, self.std)
 
             if self.test_flip:
-                img = torch.cat([img, VF.hflip(img)])
+                img_scaled = torch.cat([img_scaled, VF.hflip(img_scaled)])
 
-            images.append(img)
-            meta.append({"scale": scale, "padding": [pad_left_right, pad_top_bottom]})
+            images.append(img_scaled)
+            meta.append({
+                "scale": [new_width / width, new_height / height],
+                "padding": [pad_left_right, pad_top_bottom]
+            })
 
         # Forward
         outputs = []
@@ -153,11 +156,11 @@ class CenterNetDetection(CenterNet):
             detection = detection.cpu().detach().squeeze()
 
             # Transform detection to original image
-            padding = torch.FloatTensor(meta["padding"])
+            padding = torch.FloatTensor(meta["padding"] + meta["padding"])
+            scale = torch.FloatTensor(meta["scale"] + meta["scale"])
             detection[:, :4] *= self.down_ratio  # Scale to input
-            detection[:, :2] -= padding  # Remove pad x1,y1
-            detection[:, 2:4] -= padding  # Remove pad x2,y2
-            detection[:, :4] /= meta["scale"]  # Compensate scale
+            detection[:, :4] -= padding  # Remove pad
+            detection[:, :4] /= scale  # Compensate scale
 
             # Group detections by class
             class_predictions = {}
@@ -171,11 +174,10 @@ class CenterNetDetection(CenterNet):
         # Merge detections
         results = {}
         for j in range(1, self.num_classes + 1):
-            boxes = np.concatenate([detection[j] for detection in detections], axis=0)
-            results[j] = boxes
-            if boxes.shape[0] > 0:
-                keep_indices = soft_nms(boxes, Nt=0.5, method=2)
-                results[j] = boxes[keep_indices]
+            results[j] = np.concatenate([detection[j] for detection in detections], axis=0)
+            if len(self.test_scales) > 1:
+                keep_indices = soft_nms(results[j], Nt=0.5, method=2)
+                results[j] = results[j][keep_indices]
 
         # Keep only best detections
         scores = np.hstack([results[j][:, 4] for j in range(1, self.num_classes + 1)])
@@ -253,25 +255,27 @@ def cli_main():
     train_transform = ComposeSample(
         [
             ImageAugmentation(
-                iaa.Sequential(
-                    [
-                        iaa.Fliplr(0.5),
-                        iaa.Sometimes(0.5, iaa.GaussianBlur(sigma=(0, 0.5))),
-                        iaa.LinearContrast((0.75, 1.5)),
-                        iaa.AdditiveGaussianNoise(
-                            loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5
-                        ),
-                        iaa.Multiply((0.8, 1.2), per_channel=0.1),
-                        iaa.Affine(
-                            scale={"x": (0.6, 1.4), "y": (0.6, 1.4)},
-                            translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
-                            rotate=(-5, 5),
-                            shear=(-3, 3),
-                        ),
-                        iaa.PadToFixedSize(width=512, height=512),
-                        iaa.CropToFixedSize(width=512, height=512),
-                    ]
-                ),
+                iaa.Sequential([
+                    iaa.Sequential(
+                        [
+                            iaa.Fliplr(0.5),
+                            iaa.Sometimes(0.5, iaa.GaussianBlur(sigma=(0, 0.5))),
+                            iaa.LinearContrast((0.75, 1.5)),
+                            iaa.AdditiveGaussianNoise(
+                                loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5
+                            ),
+                            iaa.Multiply((0.8, 1.2), per_channel=0.1),
+                            iaa.Affine(
+                                scale={"x": (0.6, 1.4), "y": (0.6, 1.4)},
+                                translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
+                                rotate=(-5, 5),
+                                shear=(-3, 3),
+                            ),
+                        ],
+                        random_order=True
+                    ),
+                    iaa.PadToFixedSize(width=512, height=512)
+                ]),
                 torchvision.transforms.Compose(
                     [
                         torchvision.transforms.ToTensor(),
@@ -289,12 +293,7 @@ def cli_main():
     valid_transform = ComposeSample(
         [
             ImageAugmentation(
-                iaa.Sequential(
-                    [
-                        iaa.PadToFixedSize(width=512, height=512),
-                        iaa.CropToFixedSize(width=512, height=512),
-                    ]
-                ),
+                iaa.PadToFixedSize(width=512, height=512),
                 torchvision.transforms.Compose(
                     [
                         torchvision.transforms.ToTensor(),

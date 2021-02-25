@@ -1,85 +1,108 @@
+
+
+from numba import jit
 import numpy as np
 
 
-def soft_nms(dets, Nt=0.3, sigma=0.5, thresh=0.001, method=2):
+@jit(nopython=True)
+def soft_nms(boxes, sigma=0.5, Nt=0.3, threshold=0.001, method=0):
     """
-    This is a Python version used to implement the Soft NMS algorithm.
-    Original Paper：Improving Object Detection With One Line of Code
+    Soft-NMS: Improving Object Detection With One Line of Code
+      Copyright (c) University of Maryland, College Park
+      Licensed under The MIT License [see LICENSE for details]
+      Written by Navaneeth Bodla and Bharat Singh
 
-    Based on: https://github.com/DocF/Soft-NMS/blob/master/soft_nms.py
-
-    :param dets:   boxes format [x1, y1, x2, y2, sc]
-    :param Nt:     required iou
-    :param sigma:
-    :param thresh:
-    :param method: 1 - linear soft-NMS, 2 - gaussian soft-NMS, 3 - standard NMS
-    :return: index of boxes to keep
+    :param boxes: bounding_boxes {x1, y1, x2, y2, sc]
+    :param sigma: Sigma
+    :param Nt:
+    :param threshold:
+    :param method: 0 | 1 | 2 - Oringal NMS | linear | gaussian
+    :return:
     """
-
-    # indexes concatenate boxes with the last column
-    N = dets.shape[0]
-    indexes = np.array([np.arange(N)])
-    dets = np.concatenate((dets, indexes.T), axis=1)
-
-    x1 = dets[:, 0]
-    y1 = dets[:, 1]
-    x2 = dets[:, 2]
-    y2 = dets[:, 3]
-    scores = dets[:, 4]
-    areas = (x2 - x1 + 1) * (y2 - y1 + 1)
+    N = boxes.shape[0]
 
     for i in range(N):
-        # intermediate parameters for later parameters exchange
-        tBD = dets[i, :].copy()
-        tscore = scores[i].copy()
-        tarea = areas[i].copy()
+        maxscore = boxes[i, 4]
+        maxpos = i
+
+        tx1 = boxes[i, 0]
+        ty1 = boxes[i, 1]
+        tx2 = boxes[i, 2]
+        ty2 = boxes[i, 3]
+        ts = boxes[i, 4]
+
         pos = i + 1
+        # get max box
+        while pos < N:
+            if maxscore < boxes[pos, 4]:
+                maxscore = boxes[pos, 4]
+                maxpos = pos
+            pos = pos + 1
 
-        #
-        if i != N-1:
-            maxscore = np.max(scores[pos:], axis=0)
-            maxpos = np.argmax(scores[pos:], axis=0)
-        else:
-            maxscore = scores[-1]
-            maxpos = 0
-        if tscore < maxscore:
-            dets[i, :] = dets[maxpos + i + 1, :]
-            dets[maxpos + i + 1, :] = tBD
-            tBD = dets[i, :]
+        # add max box as a detection
+        boxes[i, 0] = boxes[maxpos, 0]
+        boxes[i, 1] = boxes[maxpos, 1]
+        boxes[i, 2] = boxes[maxpos, 2]
+        boxes[i, 3] = boxes[maxpos, 3]
+        boxes[i, 4] = boxes[maxpos, 4]
 
-            scores[i] = scores[maxpos + i + 1]
-            scores[maxpos + i + 1] = tscore
-            tscore = scores[i]
+        # swap ith box with position of max box
+        boxes[maxpos, 0] = tx1
+        boxes[maxpos, 1] = ty1
+        boxes[maxpos, 2] = tx2
+        boxes[maxpos, 3] = ty2
+        boxes[maxpos, 4] = ts
 
-            areas[i] = areas[maxpos + i + 1]
-            areas[maxpos + i + 1] = tarea
-            tarea = areas[i]
+        tx1 = boxes[i, 0]
+        ty1 = boxes[i, 1]
+        tx2 = boxes[i, 2]
+        ty2 = boxes[i, 3]
+        ts = boxes[i, 4]
 
-        # IoU calculate
-        xx1 = np.maximum(dets[i, 1], dets[pos:, 1])
-        yy1 = np.maximum(dets[i, 0], dets[pos:, 0])
-        xx2 = np.minimum(dets[i, 3], dets[pos:, 3])
-        yy2 = np.minimum(dets[i, 2], dets[pos:, 2])
+        pos = i + 1
+        # NMS iterations, note that N changes if detection boxes fall below threshold
+        while pos < N:
+            x1 = boxes[pos, 0]
+            y1 = boxes[pos, 1]
+            x2 = boxes[pos, 2]
+            y2 = boxes[pos, 3]
+            s = boxes[pos, 4]
 
-        w = np.maximum(0.0, xx2 - xx1 + 1)
-        h = np.maximum(0.0, yy2 - yy1 + 1)
-        inter = w * h
-        ovr = inter / (areas[i] + areas[pos:] - inter)
+            area = (x2 - x1 + 1) * (y2 - y1 + 1)
+            iw = (min(tx2, x2) - max(tx1, x1) + 1)
+            if iw > 0:
+                ih = (min(ty2, y2) - max(ty1, y1) + 1)
+                if ih > 0:
+                    ua = float((tx2 - tx1 + 1) * (ty2 - ty1 + 1) + area - iw * ih)
+                    ov = iw * ih / ua  # iou between max box and detection box
 
-        # Three methods: 1.linear 2.gaussian 3.original NMS
-        if method == 1:  # linear
-            weight = np.ones(ovr.shape)
-            weight[ovr > Nt] = weight[ovr > Nt] - ovr[ovr > Nt]
-        elif method == 2:  # gaussian
-            weight = np.exp(-(ovr * ovr) / sigma)
-        else:  # original NMS
-            weight = np.ones(ovr.shape)
-            weight[ovr > Nt] = 0
+                    if method == 1:  # linear
+                        if ov > Nt:
+                            weight = 1 - ov
+                        else:
+                            weight = 1
+                    elif method == 2:  # gaussian
+                        weight = np.exp(-(ov * ov) / sigma)
+                    else:  # original NMS
+                        if ov > Nt:
+                            weight = 0
+                        else:
+                            weight = 1
 
-        scores[pos:] = weight * scores[pos:]
+                    boxes[pos, 4] = weight * boxes[pos, 4]
 
-    # select the boxes and keep the corresponding indexes
-    inds = dets[:, 5][scores > thresh]
-    keep = inds.astype(int)
+                    # if box score falls below threshold, discard the box by swapping with last box
+                    # update N
+                    if boxes[pos, 4] < threshold:
+                        boxes[pos, 0] = boxes[N - 1, 0]
+                        boxes[pos, 1] = boxes[N - 1, 1]
+                        boxes[pos, 2] = boxes[N - 1, 2]
+                        boxes[pos, 3] = boxes[N - 1, 3]
+                        boxes[pos, 4] = boxes[N - 1, 4]
+                        N = N - 1
+                        pos = pos - 1
 
+            pos = pos + 1
+
+    keep = [i for i in range(N)]
     return keep

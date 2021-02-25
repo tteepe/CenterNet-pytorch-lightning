@@ -22,6 +22,7 @@ class CenterNet(pl.LightningModule):
     def load_pretrained_weights(self, model_weight_path, strict=True):
         checkpoint = torch.load(model_weight_path)
         state_dict = {k.replace("module.", ""): v for k, v in checkpoint['state_dict'].items()}
+        print(f"Loading weights from: {model_weight_path}")
         self.model.load_state_dict(state_dict, strict=strict)
 
     def forward(self, x):
