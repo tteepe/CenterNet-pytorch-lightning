@@ -6,6 +6,6 @@ numpy~=1.19.5
 opencv-python~=4.5.1.48
 pycocotools~=2.0.2
 pytorch-lightning~=1.2.0
-setuptools~=53.0.0
+setuptools~=53.1.0
 torchvision~=0.8.2
 torch~=1.7.1
