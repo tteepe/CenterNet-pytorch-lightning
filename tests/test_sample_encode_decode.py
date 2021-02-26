@@ -39,7 +39,7 @@ def test_cdet_encoding_decoding():
     reg = torch.zeros((batch, width, height, 2))
 
     # Create fake output from sample
-    indices = output['ind'].unsqueeze(0)
+    indices = output['indices'].unsqueeze(0)
     indices_x = indices % width
     indices_y = indices // width
     wh[:, indices_y, indices_x] = output['width_height'].unsqueeze(0)
