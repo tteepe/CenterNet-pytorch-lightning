@@ -14,6 +14,7 @@ from pycocotools.cocoeval import COCOeval
 from torchvision.datasets import CocoDetection
 
 from centernet import CenterNet
+from models.heads import CenterHead
 from transforms import CategoryIdToClass, ImageAugmentation
 from transforms.sample import ComposeSample
 from transforms.ctdet import CenterDetectionSample
@@ -50,11 +51,18 @@ class CenterNetDetection(CenterNet):
         test_scales=None,
         test_flip=False,
     ):
-        self.arch = arch
-        self.num_classes = num_classes
+        super().__init__(arch)
 
-        heads = {"heatmap": num_classes, "width_height": 2, "regression": 2}
-        super().__init__(arch, heads)
+        self.num_classes = num_classes
+        heads = {
+            "heatmap": self.num_classes,
+            "width_height": 2,
+            "regression": 2
+        }
+        self.heads = torch.nn.ModuleList([
+            CenterHead(heads, self.backbone.out_channels, self.head_conv)
+            for _ in range(self.num_stacks)
+        ])
 
         # Test
         self.test_coco = test_coco
@@ -70,7 +78,13 @@ class CenterNetDetection(CenterNet):
         self.save_hyperparameters()
 
     def forward(self, x):
-        return self.model.forward(x)
+        outputs = self.backbone(x)
+
+        rets = []
+        for head, output in zip(self.heads, outputs):
+            rets.append(head(output))
+
+        return rets
 
     def loss(self, outputs, target):
         hm_loss, wh_loss, off_loss = 0, 0, 0
@@ -275,7 +289,8 @@ def cli_main():
                         ],
                         random_order=True
                     ),
-                    iaa.PadToFixedSize(width=512, height=512)
+                    iaa.PadToFixedSize(width=512, height=512),
+                    iaa.CropToFixedSize(width=512, height=512)
                 ]),
                 torchvision.transforms.Compose(
                     [
@@ -294,7 +309,10 @@ def cli_main():
     valid_transform = ComposeSample(
         [
             ImageAugmentation(
-                iaa.PadToFixedSize(width=512, height=512),
+                iaa.Sequential([
+                    iaa.PadToFixedSize(width=512, height=512),
+                    iaa.CropToFixedSize(width=512, height=512)
+                ]),
                 torchvision.transforms.Compose(
                     [
                         torchvision.transforms.ToTensor(),

@@ -108,10 +108,10 @@ class Bottleneck(nn.Module):
 
 
 class PoseResNet(nn.Module):
-    def __init__(self, block, layers, heads, head_conv, **kwargs):
+    def __init__(self, block, layers, **kwargs):
         self.inplanes = 64
+        self.out_channels = 256
         self.deconv_with_bias = False
-        self.heads = heads
 
         super(PoseResNet, self).__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -130,26 +130,6 @@ class PoseResNet(nn.Module):
             [4, 4, 4],
         )
         # self.final_layer = []
-
-        for head in sorted(self.heads):
-            num_output = self.heads[head]
-            if head_conv > 0:
-                fc = nn.Sequential(
-                    nn.Conv2d(256, head_conv, kernel_size=3, padding=1, bias=True),
-                    nn.ReLU(inplace=True),
-                    nn.Conv2d(
-                        head_conv, num_output, kernel_size=1, stride=1, padding=0
-                    ),
-                )
-            else:
-                fc = nn.Conv2d(
-                    in_channels=256,
-                    out_channels=num_output,
-                    kernel_size=1,
-                    stride=1,
-                    padding=0,
-                )
-            self.__setattr__(head, fc)
 
         # self.final_layer = nn.ModuleList(self.final_layer)
 
@@ -230,10 +210,8 @@ class PoseResNet(nn.Module):
         x = self.layer4(x)
 
         x = self.deconv_layers(x)
-        ret = {}
-        for head in self.heads:
-            ret[head] = self.__getattr__(head)(x)
-        return [ret]
+
+        return [x]
 
     def init_weights(self, num_layers, pretrained=True):
         if pretrained:
@@ -251,28 +229,28 @@ class PoseResNet(nn.Module):
                     nn.init.constant_(m.weight, 1)
                     nn.init.constant_(m.bias, 0)
             # print('=> init final conv model_weights from normal distribution')
-            for head in self.heads:
-                final_layer = self.__getattr__(head)
-                for i, m in enumerate(final_layer.modules()):
-                    if isinstance(m, nn.Conv2d):
-                        # nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                        # print('=> init {}.weight as normal(0, 0.001)'.format(name))
-                        # print('=> init {}.bias as 0'.format(name))
-                        if m.weight.shape[0] == self.heads[head]:
-                            if "heatmap" in head:
-                                nn.init.constant_(m.bias, -2.19)
-                            else:
-                                nn.init.normal_(m.weight, std=0.001)
-                                nn.init.constant_(m.bias, 0)
+            # for head in self.heads:
+            #     final_layer = self.__getattr__(head)
+            #     for i, m in enumerate(final_layer.modules()):
+            #         if isinstance(m, nn.Conv2d):
+            #             # nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            #             # print('=> init {}.weight as normal(0, 0.001)'.format(name))
+            #             # print('=> init {}.bias as 0'.format(name))
+            #             if m.weight.shape[0] == self.heads[head]:
+            #                 if "heatmap" in head:
+            #                     nn.init.constant_(m.bias, -2.19)
+            #                 else:
+            #                     nn.init.normal_(m.weight, std=0.001)
+            #                     nn.init.constant_(m.bias, 0)
             # pretrained_state_dict = torch.load(pretrained)
             url = model_urls["resnet{}".format(num_layers)]
             pretrained_state_dict = model_zoo.load_url(url)
-            print("=> loading pretrained model {}".format(url))
+            print("=> loading pretrained backbone {}".format(url))
             self.load_state_dict(pretrained_state_dict, strict=False)
         else:
-            print("=> imagenet pretrained model dose not exist")
+            print("=> imagenet pretrained backbone dose not exist")
             print("=> please download it first")
-            raise ValueError("imagenet pretrained model does not exist")
+            raise ValueError("imagenet pretrained backbone does not exist")
 
 
 resnet_spec = {
@@ -284,9 +262,9 @@ resnet_spec = {
 }
 
 
-def get_pose_net(num_layers, heads, head_conv):
+def get_pose_net(num_layers):
     block_class, layers = resnet_spec[num_layers]
 
-    model = PoseResNet(block_class, layers, heads, head_conv=head_conv)
+    model = PoseResNet(block_class, layers)
     model.init_weights(num_layers, pretrained=True)
     return model

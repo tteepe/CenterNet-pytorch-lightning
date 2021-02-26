@@ -221,7 +221,6 @@ class exkp(nn.Module):
         nstack,
         dims,
         modules,
-        heads,
         pre=None,
         cnv_dim=256,
         make_tl_layer=None,
@@ -243,7 +242,7 @@ class exkp(nn.Module):
         super(exkp, self).__init__()
 
         self.nstack = nstack
-        self.heads = heads
+        self.out_channels = 256
 
         curr_dim = dims[0]
 
@@ -300,27 +299,6 @@ class exkp(nn.Module):
             ]
         )
 
-        ## keypoint heatmaps
-        for head in heads.keys():
-            if "heatmap" in head:
-                module = nn.ModuleList(
-                    [
-                        make_heat_layer(cnv_dim, curr_dim, heads[head])
-                        for _ in range(nstack)
-                    ]
-                )
-                self.__setattr__(head, module)
-                for heat in self.__getattr__(head):
-                    heat[-1].bias.data.fill_(-2.19)
-            else:
-                module = nn.ModuleList(
-                    [
-                        make_regr_layer(cnv_dim, curr_dim, heads[head])
-                        for _ in range(nstack)
-                    ]
-                )
-                self.__setattr__(head, module)
-
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, image):
@@ -333,13 +311,8 @@ class exkp(nn.Module):
             kp = kp_(inter)
             cnv = cnv_(kp)
 
-            out = {}
-            for head in self.heads:
-                layer = self.__getattr__(head)[ind]
-                y = layer(cnv)
-                out[head] = y
+            outs.append(cnv)
 
-            outs.append(out)
             if ind < self.nstack - 1:
                 inter = self.inters_[ind](inter) + self.cnvs_[ind](cnv)
                 inter = self.relu(inter)
@@ -354,7 +327,7 @@ def make_hg_layer(kernel, dim0, dim1, mod, layer=convolution, **kwargs):
 
 
 class HourglassNet(exkp):
-    def __init__(self, heads, num_stacks=2):
+    def __init__(self, num_stacks=2):
         n = 5
         dims = [256, 256, 384, 384, 384, 512]
         modules = [2, 2, 2, 2, 2, 4]
@@ -364,7 +337,6 @@ class HourglassNet(exkp):
             num_stacks,
             dims,
             modules,
-            heads,
             make_tl_layer=None,
             make_br_layer=None,
             make_pool_layer=make_pool_layer,
@@ -374,6 +346,5 @@ class HourglassNet(exkp):
         )
 
 
-def get_large_hourglass_net(num_layers, heads, head_conv):
-    model = HourglassNet(heads, 2)
-    return model
+def get_large_hourglass_net(num_layers):
+    return HourglassNet()

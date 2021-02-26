@@ -2,17 +2,17 @@ import os
 from argparse import ArgumentParser
 
 import imgaug.augmenters as iaa
-
+import torch
 import torchvision
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 from torchvision.datasets import CocoDetection
 
 from centernet import CenterNet
+from models.heads import CenterHead
 from utils.decode import sigmoid_clamped
 
 from transforms import CategoryIdToClass, ImageAugmentation
-from models import create_model
 from utils.losses import RegL1Loss, FocalLoss, RegWeightedL1Loss
 from transforms.ctdet import CenterDetectionSample
 from transforms.multi_pose import MultiPoseSample
@@ -30,8 +30,21 @@ class CenterNetPose(CenterNet):
         hp_weight=1,
         hm_hp_weight=1,
     ):
-        heads = {"heatmap": 1, "width_height": 2, "regression": 2, "heatmap_keypoints": 17, "heatpoint_offset": 2, "keypoints": 34}
-        super().__init__(arch, heads)
+        super().__init__(arch)
+
+        heads = {
+            "heatmap": 1,
+            "width_height": 2,
+            "regression": 2,
+            "heatmap_keypoints": 17,
+            "heatpoint_offset": 2,
+            "keypoints": 34,
+        }
+        self.heads = torch.nn.ModuleList([
+            CenterHead(heads, self.backbone.out_channels, self.head_conv)
+            for _ in range(self.num_stacks)
+        ])
+
         self.save_hyperparameters()
 
         self.criterion = FocalLoss()
@@ -41,7 +54,13 @@ class CenterNetPose(CenterNet):
         self.criterion_width_height = RegL1Loss()
 
     def forward(self, x):
-        return self.model.forward(x)
+        outputs = self.backbone(x)
+
+        rets = []
+        for head, output in zip(self.heads, outputs):
+            rets.append(head(output))
+
+        return rets
 
     def loss(self, outputs, target):
         hm_loss, wh_loss, off_loss = 0, 0, 0

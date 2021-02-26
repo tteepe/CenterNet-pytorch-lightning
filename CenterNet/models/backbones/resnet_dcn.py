@@ -127,9 +127,9 @@ def fill_fc_weights(layers):
 
 
 class PoseResNet(nn.Module):
-    def __init__(self, block, layers, heads, head_conv):
+    def __init__(self, block, layers):
         self.inplanes = 64
-        self.heads = heads
+        self.out_channels = 64
         self.deconv_with_bias = False
 
         super(PoseResNet, self).__init__()
@@ -148,35 +148,6 @@ class PoseResNet(nn.Module):
             [256, 128, 64],
             [4, 4, 4],
         )
-
-        for head in self.heads:
-            classes = self.heads[head]
-            if head_conv > 0:
-                fc = nn.Sequential(
-                    nn.Conv2d(64, head_conv, kernel_size=3, padding=1, bias=True),
-                    nn.ReLU(inplace=True),
-                    nn.Conv2d(
-                        head_conv,
-                        classes,
-                        kernel_size=1,
-                        stride=1,
-                        padding=0,
-                        bias=True,
-                    ),
-                )
-                if "heatmap" in head:
-                    fc[-1].bias.data.fill_(-2.19)
-                else:
-                    fill_fc_weights(fc)
-            else:
-                fc = nn.Conv2d(
-                    64, classes, kernel_size=1, stride=1, padding=0, bias=True
-                )
-                if "heatmap" in head:
-                    fc.bias.data.fill_(-2.19)
-                else:
-                    fill_fc_weights(fc)
-            self.__setattr__(head, fc)
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -272,16 +243,14 @@ class PoseResNet(nn.Module):
         x = self.layer4(x)
 
         x = self.deconv_layers(x)
-        ret = {}
-        for head in self.heads:
-            ret[head] = self.__getattr__(head)(x)
-        return [ret]
+
+        return [x]
 
     def init_weights(self, num_layers):
         if 1:
             url = model_urls["resnet{}".format(num_layers)]
             pretrained_state_dict = model_zoo.load_url(url)
-            print("=> loading pretrained model {}".format(url))
+            print("=> loading pretrained backbone {}".format(url))
             self.load_state_dict(pretrained_state_dict, strict=False)
             print("=> init deconv model_weights from normal distribution")
             for name, m in self.deconv_layers.named_modules():
@@ -299,9 +268,9 @@ resnet_spec = {
 }
 
 
-def get_pose_net(num_layers, heads, head_conv=256):
+def get_pose_net(num_layers):
     block_class, layers = resnet_spec[num_layers]
 
-    model = PoseResNet(block_class, layers, heads, head_conv=head_conv)
+    model = PoseResNet(block_class, layers)
     model.init_weights(num_layers)
     return model

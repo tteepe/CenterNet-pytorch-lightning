@@ -8,25 +8,62 @@ from models import create_model
 
 
 class CenterNet(pl.LightningModule):
-    def __init__(self, arch, heads):
+    def __init__(self, arch):
         super().__init__()
+        self.arch = arch
 
         # Backbone specific args
-        self.head_conv = 256 if 'dla' in arch else 64
-        self.padding = 127 if 'hourglass' in arch else 31
+        self.head_conv = 256 if "dla" in arch or "hourglass" in arch else 64
+        self.num_stacks = 2 if "hourglass" in arch else 1
+        self.padding = 127 if "hourglass" in arch else 31
 
-        self.model = create_model(arch, heads, self.head_conv)
+        self.backbone = create_model(arch)
 
         self.down_ratio = 4
 
     def load_pretrained_weights(self, model_weight_path, strict=True):
-        checkpoint = torch.load(model_weight_path)
-        state_dict = {k.replace("module.", ""): v for k, v in checkpoint['state_dict'].items()}
+        mapping = {
+            "hm": "heatmap",
+            "wh": "width_height",
+            "reg": "regression",
+            "hm_hp": "heatmap_keypoints",
+            "hp_offset": "heatpoint_offset",
+            "hps": "keypoints",
+        }
+
         print(f"Loading weights from: {model_weight_path}")
-        self.model.load_state_dict(state_dict, strict=strict)
+        checkpoint = torch.load(model_weight_path)
+        backbone = {
+            k.replace("module.", ""): v
+            for k, v in checkpoint["state_dict"].items()
+            if k.split(".")[1] not in mapping
+        }
+        self.backbone.load_state_dict(backbone, strict=strict)
+
+        # These next lines are some special magic.
+        # Try not to touch them and enjoy their beauty.
+        # (The new decoupled heads require these amazing mapping functions
+        #  to load the old pretrained weights)
+        heads = {
+            ("0." if self.num_stacks == 1 else "")
+            + ".".join(
+                [mapping[k.replace("module.", "").split(".")[0]], "fc"]
+                + k.split(".")[2:]
+            ).replace("conv.", ""): v
+            for k, v in checkpoint["state_dict"].items()
+            if k.split(".")[1] in mapping
+        }
+        if self.arch == "hourglass":
+            heads = {
+                ".".join(
+                    k.split(".")[2:3] + k.split(".")[:2] + k.split(".")[3:]
+                ).replace("fc.1", "fc.2"): v
+                for k, v in heads.items()
+            }
+        self.heads.load_state_dict(heads, strict=strict)
 
     def forward(self, x):
-        return self.model.forward(x)
+        return self.backbone.forward(x)
 
     @abc.abstractmethod
     def loss(self, outputs, target):
@@ -47,18 +84,20 @@ class CenterNet(pl.LightningModule):
         outputs = self(img)
         loss, loss_stats = self.loss(outputs, target)
 
-        return {'loss': loss, 'loss_stats': loss_stats}
+        return {"loss": loss, "loss_stats": loss_stats}
 
     def validation_epoch_end(self, batch_parts_outputs):
         if len(batch_parts_outputs) == 0:
             return
 
-        val_loss = torch.stack([x['loss'] for x in batch_parts_outputs]).mean()
+        val_loss = torch.stack([x["loss"] for x in batch_parts_outputs]).mean()
         self.log(f"val_loss", val_loss)
 
-        loss_stats = batch_parts_outputs[0]['loss_stats'].keys()
+        loss_stats = batch_parts_outputs[0]["loss_stats"].keys()
         for stat in loss_stats:
-            stat_mean = torch.stack([x['loss_stats'][stat] for x in batch_parts_outputs]).mean()
+            stat_mean = torch.stack(
+                [x["loss_stats"][stat] for x in batch_parts_outputs]
+            ).mean()
             self.log(f"val/{stat}", stat_mean)
 
     def configure_optimizers(self):
@@ -70,7 +109,7 @@ class CenterNet(pl.LightningModule):
         parser.add_argument(
             "--arch",
             default="dla_34",
-            help="model architecture. Currently tested "
+            help="backbone architecture. Currently tested "
             "res_18 | res_101 | resdcn_18 | resdcn_101 | dlav0_34 | dla_34 | hourglass",
         )
 

@@ -11,12 +11,13 @@ My attempt at a cleaner implementation of the glorious [CenterNet](https://githu
 - Split sample creation into image augmentation (with [imgaug](https://github.com/aleju/imgaug)) and actual sample creation
 - Comes shipped with Lightning modules but can also be used with good ol' plain PyTorch
 - Stripped all code not used to reproduce the results in the paper
+- Smaller code base with more meaningful variable names
 - Requires significantly less memory
-- Introduced more meaningful variable names
+- Same or slightly better results than the original implementation
+
 
 ### ToDos
 Some features of the original repository are not implemented yet but pull requests are welcome!
-
 - [ ] 3D bounding box detection
 - [ ] ExtremeNet detection
 - [ ] Pascal VOC dataset
@@ -31,6 +32,9 @@ git clone https://github.com/tteepe/CenterNet-pytorch-lightning
 cd CenterNet-pytorch-lightning
 pip install -e .   
 pip install -r requirements.txt
+
+# Make DCNv2 - a backbone dependency
+cd CenterNet/models/backbones/DCNv2 && sh make.sh
  ```   
  Next, navigate to any file and run it.   
  ```bash
@@ -51,17 +55,17 @@ from CenterNet.centernet_detection import CenterNetDetection
 from pytorch_lightning import Trainer
 
 # model
-model = CenterNetDetection()
+model = CenterNetDetection("dla_34")
 
 # data
 train = CocoDetection("train2017", "instances_train2017.json")
 val = CocoDetection("val2017", "instances_val2017.json")
-test = CocoDetection("test2017", "image_info_test2017.json")
 
 # train
 trainer = Trainer()
 trainer.fit(model, train, val)
 
-# test using the best model!
+# test using the best backbone!
+test = CocoDetection("test2017", "image_info_test2017.json")
 trainer.test(test_dataloaders=test)
 ```

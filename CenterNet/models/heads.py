@@ -1,9 +1,11 @@
 import torch.nn as nn
 
 
-class Head(nn.Module):
+class HeadConv(nn.Module):
     def __init__(self, out_channels: int, intermediate_channel: int, head_conv: int):
         super().__init__()
+        self.out_channels = out_channels
+
         self.fc = nn.Sequential(
             nn.Conv2d(
                 intermediate_channel, head_conv, kernel_size=3, padding=1, bias=True
@@ -23,47 +25,26 @@ class Head(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
 
-class DetectionHead(nn.Module):
-    def __init__(self, num_classes, intermediate_channel, head_conv):
+class CenterHead(nn.Module):
+    def __init__(self, heads, intermediate_channel, head_conv):
         super().__init__()
 
-        self.heatmap = Head(num_classes, intermediate_channel, head_conv)
-        self.width_height = Head(2, intermediate_channel, head_conv)
-        self.regression = Head(2, intermediate_channel, head_conv)
+        self.heads = heads
+        for name, out_channel in heads.items():
+            self.__setattr__(name, HeadConv(out_channel, intermediate_channel, head_conv))
+
         self.init_weights()
 
     def forward(self, x):
-        return {
-            "heatmap": self.heatmap(x),
-            "width_height": self.width_height(x),
-            "regression": self.regression(x),
-        }
+        ret = {}
+        for name in self.heads.keys():
+            ret[name] = self.__getattr__(name)(x)
+
+        return ret
 
     def init_weights(self):
-        self.heatmap[-1].bias.data.fill_(-2.19)
-
-        self.width_height.fill_fc_weights()
-        self.regression.fill_fc_weights()
-
-
-class PoseHead(nn.Module):
-    def __init__(self, intermediate_channel, head_conv, num_joints=17):
-        super().__init__()
-
-        self.keypoints = Head(int(num_joints * 2), intermediate_channel, head_conv)
-        self.heatmap_keypoints = Head(num_joints, intermediate_channel, head_conv)
-        self.heatpoint_offset = Head(2, intermediate_channel, head_conv)
-        self.init_weights()
-
-    def forward(self, x):
-        return {
-            "keypoints": self.keypoints(x),
-            "heatmap_keypoints": self.heatmap_keypoints(x),
-            "heatpoint_offset": self.heatpoint_offset(x),
-        }
-
-    def init_weights(self):
-        self.heatmap_keypoints[-1].bias.data.fill_(-2.19)
-
-        self.keypoints.fill_fc_weights()
-        self.heatpoint_offset.fill_fc_weights()
+        for name in self.heads.keys():
+            if name.startswith("heatmap"):
+                self.__getattr__(name).fc[-1].bias.data.fill_(-2.19)
+            else:
+                self.__getattr__(name).fill_fc_weights()
