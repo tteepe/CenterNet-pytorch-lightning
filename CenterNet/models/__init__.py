@@ -1,5 +1,4 @@
 from .backbones.msra_resnet import get_pose_net
-from .backbones.dlav0 import get_pose_net as get_dlav0
 from .backbones.pose_dla_dcn import get_pose_net as get_dla_dcn
 from .backbones.resnet_dcn import get_pose_net as get_pose_net_dcn
 from .backbones.large_hourglass import get_large_hourglass_net
@@ -7,7 +6,6 @@ from .backbones.large_hourglass import get_large_hourglass_net
 
 _model_factory = {
     "res": get_pose_net,  # default Resnet with deconv
-    "dlav0": get_dlav0,  # default DLAup
     "dla": get_dla_dcn,
     "resdcn": get_pose_net_dcn,
     "hourglass": get_large_hourglass_net,

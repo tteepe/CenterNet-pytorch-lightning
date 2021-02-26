@@ -69,6 +69,11 @@ jobs:
       run: |
         coverage run --source CenterNet -m py.test CenterNet tests -v --ignore CenterNet/models/backbones/DCNv2/DCN --junitxml=junit/test-results-${{ runner.os }}-${{ matrix.python-version }}.xml
 
+    - name: Cache weights
+      uses: actions/cache@v2.1.4
+      with:
+        path: ~/.cache
+
     - name: Statistics
       if: success()
       run: |
