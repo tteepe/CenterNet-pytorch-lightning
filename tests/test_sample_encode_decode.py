@@ -6,14 +6,15 @@ import imgaug.augmenters as iaa
 import pytest
 
 from decode.ctdet import ctdet_decode
-from transforms import CategoryIdToClass, ComposeSample, ImageAugmentation
+from transforms import CategoryIdToClass, ImageAugmentation
+from transforms.sample import ComposeSample
 from transforms.ctdet import CenterDetectionSample
 
 
 def test_cdet_encoding_decoding():
     sample_encoding = ComposeSample([
         ImageAugmentation(
-            iaa.Identity(),  # change brightness, doesn't affect keypoints & bounding_boxes
+            iaa.Identity(),
             torchvision.transforms.ToTensor()
         ),
         CategoryIdToClass(range(0, 100)),
@@ -32,18 +33,21 @@ def test_cdet_encoding_decoding():
 
     img, output = sample_encoding(img, coco_annotation)
 
-    heatmap = output['hm'].unsqueeze(0)
+    heatmap = output['heatmap'].unsqueeze(0)
     batch, cat, height, width = heatmap.size()
     wh = torch.zeros((batch, width, height, 2))
     reg = torch.zeros((batch, width, height, 2))
 
+    # Create fake output from sample
     indices = output['ind'].unsqueeze(0)
     indices_x = indices % width
     indices_y = indices // width
-    wh[:, indices_y, indices_x] = output['wh'].unsqueeze(0)
+    wh[:, indices_y, indices_x] = output['width_height'].unsqueeze(0)
     wh = wh.permute(0, 3, 1, 2)
-    reg[:, indices_y, indices_x] = output['reg'].unsqueeze(0)
+    reg[:, indices_y, indices_x] = output['regression'].unsqueeze(0)
     reg = reg.permute(0, 3, 1, 2)
+
+    # Decode fake output
     detections = ctdet_decode(heatmap, wh, reg).squeeze().numpy()
     detections = 4 * detections[detections[:, 4] > 0.5]
 

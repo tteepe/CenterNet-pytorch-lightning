@@ -164,7 +164,7 @@ class PoseResNet(nn.Module):
                         bias=True,
                     ),
                 )
-                if "hm" in head:
+                if "heatmap" in head:
                     fc[-1].bias.data.fill_(-2.19)
                 else:
                     fill_fc_weights(fc)
@@ -172,7 +172,7 @@ class PoseResNet(nn.Module):
                 fc = nn.Conv2d(
                     64, classes, kernel_size=1, stride=1, padding=0, bias=True
                 )
-                if "hm" in head:
+                if "heatmap" in head:
                     fc.bias.data.fill_(-2.19)
                 else:
                     fill_fc_weights(fc)

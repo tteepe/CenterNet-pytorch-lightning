@@ -581,7 +581,7 @@ class DLASeg(nn.Module):
                         bias=True,
                     ),
                 )
-                if "hm" in head:
+                if "heatmap" in head:
                     fc[-1].bias.data.fill_(-2.19)
                 else:
                     fill_fc_weights(fc)
@@ -594,7 +594,7 @@ class DLASeg(nn.Module):
                     padding=final_kernel // 2,
                     bias=True,
                 )
-                if "hm" in head:
+                if "heatmap" in head:
                     fc.bias.data.fill_(-2.19)
                 else:
                     fill_fc_weights(fc)

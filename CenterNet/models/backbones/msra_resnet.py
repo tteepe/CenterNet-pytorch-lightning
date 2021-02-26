@@ -259,7 +259,7 @@ class PoseResNet(nn.Module):
                         # print('=> init {}.weight as normal(0, 0.001)'.format(name))
                         # print('=> init {}.bias as 0'.format(name))
                         if m.weight.shape[0] == self.heads[head]:
-                            if "hm" in head:
+                            if "heatmap" in head:
                                 nn.init.constant_(m.bias, -2.19)
                             else:
                                 nn.init.normal_(m.weight, std=0.001)

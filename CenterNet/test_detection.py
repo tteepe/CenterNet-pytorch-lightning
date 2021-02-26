@@ -6,7 +6,8 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import CocoDetection
 
 from centernet_detection import CenterNetDetection
-from transforms import ComposeSample, ImageAugmentation
+from transforms import ImageAugmentation
+from transforms.sample import ComposeSample
 
 
 def cli_test():

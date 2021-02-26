@@ -9,7 +9,7 @@ from transforms import ImageAugmentation
 
 def test_image_augmentation():
     img_aug = ImageAugmentation(
-        iaa.Identity(),  # change brightness, doesn't affect keypoints & bounding_boxes
+        iaa.Identity(),
         torchvision.transforms.Compose([
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize([0.5, 0.5, 0.5], [0.275, 0.275, 0.275], inplace=True)

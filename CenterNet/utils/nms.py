@@ -1,5 +1,3 @@
-
-
 from numba import jit
 import numpy as np
 
@@ -12,7 +10,7 @@ def soft_nms(boxes, sigma=0.5, Nt=0.3, threshold=0.001, method=0):
       Licensed under The MIT License [see LICENSE for details]
       Written by Navaneeth Bodla and Bharat Singh
 
-    :param boxes: bounding_boxes {x1, y1, x2, y2, sc]
+    :param boxes: bounding_boxes [x1, y1, x2, y2, sc]
     :param sigma: Sigma
     :param Nt:
     :param threshold:

@@ -11,12 +11,12 @@ from torchvision.datasets import CocoDetection
 from centernet import CenterNet
 from utils.decode import sigmoid_clamped
 
-from transforms import CategoryIdToClass, ComposeSample, ImageAugmentation
+from transforms import CategoryIdToClass, ImageAugmentation
 from models import create_model
 from utils.losses import RegL1Loss, FocalLoss, RegWeightedL1Loss
 from transforms.ctdet import CenterDetectionSample
 from transforms.multi_pose import MultiPoseSample
-from transforms.sample import MultiSampleTransform, PoseFlip
+from transforms.sample import MultiSampleTransform, PoseFlip, ComposeSample
 
 
 class CenterNetPose(CenterNet):
@@ -30,7 +30,7 @@ class CenterNetPose(CenterNet):
         hp_weight=1,
         hm_hp_weight=1,
     ):
-        heads = {"hm": 1, "wh": 2, "reg": 2, "hm_hp": 17, "hp_offset": 2, "hps": 34}
+        heads = {"heatmap": 1, "width_height": 2, "regression": 2, "heatmap_keypoints": 17, "heatpoint_offset": 2, "keypoints": 34}
         super().__init__(arch, heads)
         self.save_hyperparameters()
 
@@ -50,28 +50,28 @@ class CenterNetPose(CenterNet):
 
         for s in range(num_stacks):
             output = outputs[s]
-            output["hm"] = sigmoid_clamped(output["hm"])
-            output["hm_hp"] = sigmoid_clamped(output["hm_hp"])
+            output["heatmap"] = sigmoid_clamped(output["heatmap"])
+            output["heatmap_keypoints"] = sigmoid_clamped(output["heatmap_keypoints"])
 
-            hm_loss += self.criterion(output["hm"], target["hm"])
+            hm_loss += self.criterion(output["heatmap"], target["heatmap"])
             hp_loss += self.criterion_keypoint(
-                output["hps"], target["hps_mask"], target["ind"], target["hps"]
+                output["keypoints"], target["keypoints_mask"], target["indices"], target["keypoints"]
             )
             wh_loss += self.criterion_width_height(
-                output["wh"], target["reg_mask"], target["ind"], target["wh"]
+                output["width_height"], target["regression_mask"], target["indices"], target["width_height"]
             )
 
             off_loss += self.criterion_regularizer(
-                output["reg"], target["reg_mask"], target["ind"], target["reg"]
+                output["regression"], target["regression_mask"], target["indices"], target["regression"]
             )
             hp_offset_loss += self.criterion_regression(
-                output["hp_offset"],
-                target["hp_mask"],
-                target["hp_ind"],
-                target["hp_offset"],
+                output["heatpoint_offset"],
+                target["heatpoint_mask"],
+                target["heatpoint_indices"],
+                target["heatpoint_offset"],
             )
             hm_hp_loss += self.criterion_heatmap_heatpoints(
-                output["hm_hp"], target["hm_hp"]
+                output["heatmap_keypoints"], target["heatmap_keypoints"]
             )
 
         loss = (

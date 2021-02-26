@@ -24,8 +24,8 @@ class CenterDetectionSample:
     @staticmethod
     def _coco_box_to_bbox(box):
         return np.array(
-            [box[0], box[1], box[0] + box[2], box[1] + box[3]],
-            dtype=np.float32)
+            [box[0], box[1], box[0] + box[2], box[1] + box[3]], dtype=np.float32
+        )
 
     def scale_point(self, point, output_size):
         x, y = point / self.down_ratio
@@ -42,7 +42,9 @@ class CenterDetectionSample:
         output_h = input_h // self.down_ratio
         output_w = input_w // self.down_ratio
 
-        heatmap = torch.zeros((self.num_classes, output_w, output_h), dtype=torch.float32)
+        heatmap = torch.zeros(
+            (self.num_classes, output_w, output_h), dtype=torch.float32
+        )
         width_height = torch.zeros((self.max_objects, 2), dtype=torch.float32)
         regression = torch.zeros((self.max_objects, 2), dtype=torch.float32)
         regression_mask = torch.zeros(self.max_objects, dtype=torch.bool)
@@ -66,7 +68,9 @@ class CenterDetectionSample:
             if h > 0 and w > 0:
                 radius = gaussian_radius((math.ceil(h), math.ceil(w)))
                 radius = max(1e-5, int(radius))
-                ct = torch.FloatTensor([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2])
+                ct = torch.FloatTensor(
+                    [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2]
+                )
                 ct_int = ct.to(torch.int32)
 
                 draw_gaussian(heatmap[cls_id], ct_int, radius)
@@ -75,6 +79,12 @@ class CenterDetectionSample:
                 regression[k] = ct - ct_int
                 regression_mask[k] = 1
 
-        ret = {"hm": heatmap, "reg_mask": regression_mask, "ind": indices, "wh": width_height, "reg": regression}
+        ret = {
+            "heatmap": heatmap,
+            "regression_mask": regression_mask,
+            "indices": indices,
+            "width_height": width_height,
+            "regression": regression,
+        }
 
         return img, ret

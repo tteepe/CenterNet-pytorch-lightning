@@ -7,7 +7,7 @@ supported_backbones = [
 
 
 def test_models():
-    heads = {"hm": 80, "wh": 2, "reg": 2}
+    heads = {"heatmap": 80, "width_height": 2, "regression": 2}
     sample_input = torch.rand((1, 3, 512, 512))
     for arch in supported_backbones:
         print(f"Testing: {arch}")

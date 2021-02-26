@@ -14,7 +14,8 @@ from pycocotools.cocoeval import COCOeval
 from torchvision.datasets import CocoDetection
 
 from centernet import CenterNet
-from transforms import CategoryIdToClass, ImageAugmentation, ComposeSample
+from transforms import CategoryIdToClass, ImageAugmentation
+from transforms.sample import ComposeSample
 from transforms.ctdet import CenterDetectionSample
 from utils.losses import RegL1Loss, FocalLoss
 from utils.decode import sigmoid_clamped
@@ -52,7 +53,7 @@ class CenterNetDetection(CenterNet):
         self.arch = arch
         self.num_classes = num_classes
 
-        heads = {"hm": num_classes, "wh": 2, "reg": 2}
+        heads = {"heatmap": num_classes, "width_height": 2, "regression": 2}
         super().__init__(arch, heads)
 
         # Test
@@ -77,14 +78,14 @@ class CenterNetDetection(CenterNet):
 
         for s in range(num_stacks):
             output = outputs[s]
-            output["hm"] = sigmoid_clamped(output["hm"])
+            output["heatmap"] = sigmoid_clamped(output["heatmap"])
 
-            hm_loss += self.criterion(output["hm"], target["hm"])
+            hm_loss += self.criterion(output["heatmap"], target["heatmap"])
             wh_loss += self.criterion_width_height(
-                output["wh"], target["reg_mask"], target["ind"], target["wh"]
+                output["width_height"], target["regression_mask"], target["indices"], target["width_height"]
             )
             off_loss += self.criterion_regression(
-                output["reg"], target["reg_mask"], target["ind"], target["reg"]
+                output["regression"], target["regression_mask"], target["indices"], target["regression"]
             )
 
         loss = (
@@ -136,9 +137,9 @@ class CenterNetDetection(CenterNet):
 
         if self.test_flip:
             for output in outputs:
-                output["hm"] = (output["hm"][0:1] + VF.hflip(output["hm"][1:2])) / 2
-                output["wh"] = (output["wh"][0:1] + VF.hflip(output["wh"][1:2])) / 2
-                output["reg"] = output["reg"][0:1]
+                output["heatmap"] = (output["heatmap"][0:1] + VF.hflip(output["heatmap"][1:2])) / 2
+                output["width_height"] = (output["width_height"][0:1] + VF.hflip(output["width_height"][1:2])) / 2
+                output["regression"] = output["regression"][0:1]
 
         return image_id, outputs, meta
 
@@ -151,7 +152,7 @@ class CenterNetDetection(CenterNet):
             meta = metas[i]
 
             detection = ctdet_decode(
-                output["hm"].sigmoid_(), output["wh"], reg=output["reg"]
+                output["heatmap"].sigmoid_(), output["width_height"], reg=output["regression"]
             )
             detection = detection.cpu().detach().squeeze()
 

@@ -302,7 +302,7 @@ class exkp(nn.Module):
 
         ## keypoint heatmaps
         for head in heads.keys():
-            if "hm" in head:
+            if "heatmap" in head:
                 module = nn.ModuleList(
                     [
                         make_heat_layer(cnv_dim, curr_dim, heads[head])
