@@ -72,6 +72,7 @@ jobs:
     - name: Cache weights
       uses: actions/cache@v2.1.4
       with:
+        key: weights-cache
         path: ~/.cache
 
     - name: Statistics
