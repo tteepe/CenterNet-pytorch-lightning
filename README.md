@@ -1,6 +1,7 @@
 # CenterNet w/ PyTorchLightning 
 
 ![CI testing](https://github.com/tteepe/CenterNet-pytorch-lightning/workflows/CI%20testing/badge.svg?branch=main&event=push)
+[![DOI](https://zenodo.org/badge/334429075.svg)](https://zenodo.org/badge/latestdoi/334429075)
 
  
 ## Description
@@ -68,4 +69,17 @@ trainer.fit(model, train, val)
 # test using the best backbone!
 test = CocoDetection("test2017", "image_info_test2017.json")
 trainer.test(test_dataloaders=test)
+```
+
+## BibTeX
+If you want to cite the implementation feel free to use this or [zendo](https://zenodo.org/record/4569502):
+
+```bibtex
+@article{teepe2021centernet,
+  title={CenterNet PyTorch Lightning},
+  author={Teepe, Torben and Gilg, Johannes},
+  journal={GitHub. Note: https://github.com/tteepe/CenterNet-pytorch-lightning},
+  volume={1},
+  year={2021}
+}
 ```
