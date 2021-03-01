@@ -7,7 +7,7 @@ import torch
 import torchvision
 import torch.nn.functional as F
 import torchvision.transforms.functional as VF
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from pycocotools.cocoeval import COCOeval
@@ -49,6 +49,7 @@ class CenterNetDetection(CenterNet):
         off_weight=0.1,
         num_classes=80,
         test_coco=None,
+        test_coco_ids=None,
         test_scales=None,
         test_flip=False,
     ):
@@ -71,7 +72,7 @@ class CenterNetDetection(CenterNet):
 
         # Test
         self.test_coco = test_coco
-        self.test_coco_ids = list(sorted(self.test_coco.imgs.keys()))
+        self.test_coco_ids = test_coco_ids
         self.test_max_per_image = 100
         self.test_scales = [1] if test_scales is None else test_scales
         self.test_flip = test_flip
@@ -129,7 +130,7 @@ class CenterNetDetection(CenterNet):
 
     def test_step(self, batch, batch_idx):
         img, target = batch
-        image_id = self.test_coco_ids[batch_idx]
+        image_id = self.test_coco_ids[batch_idx] if self.test_coco_ids else batch_idx
 
         # Test augmentation
         images = []
@@ -229,6 +230,9 @@ class CenterNetDetection(CenterNet):
         return image_id, results
 
     def test_epoch_end(self, detections):
+        if not self.test_coco:
+            return 0
+
         # Convert to COCO eval format
         # Format: imageID, x1, y1, w, h, score, class
         data = []
@@ -397,7 +401,8 @@ def cli_main():
     model = CenterNetDetection(
         args.arch, args.learning_rate,
         args.learning_rate_milestones,
-        test_coco=coco_test.coco
+        test_coco=coco_test.coco,
+        test_coco_ids=list(sorted(coco_test.coco.imgs.keys()))
     )
     if args.pretrained_weights_path:
         model.load_pretrained_weights(args.pretrained_weights_path)
@@ -410,9 +415,11 @@ def cli_main():
             monitor="val_loss",
             mode="min",
             save_top_k=1,
+            save_last=True,
             dirpath="model_weights",
             filename=args.arch + "-detection-{epoch:02d}-{val_loss:.2f}",
-        )
+        ),
+        LearningRateMonitor(logging_interval='epoch')
     ]
 
     trainer = pl.Trainer.from_argparse_args(args)

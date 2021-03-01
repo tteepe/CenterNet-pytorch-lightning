@@ -22,6 +22,10 @@ def cli_test():
 
     parser.add_argument("--pretrained_weights_path")
     parser.add_argument("--ckpt_path")
+
+    parser.add_argument("--flip", action='store_true')
+    parser.add_argument("--multi_scale", action='store_true')
+
     parser = pl.Trainer.add_argparse_args(parser)
     parser = CenterNetDetection.add_model_specific_args(parser)
     args = parser.parse_args()
@@ -50,17 +54,10 @@ def cli_test():
     # ------------
     # testing
     # ------------
+    args.test_flip = args.flip
+    args.test_scales = [.5, .75, 1, 1.25, 1.5] if args.multi_scale else None
     trainer = pl.Trainer.from_argparse_args(args)
 
-    # No augmentation
-    trainer.test(model, test_dataloaders=test_loader, ckpt_path=args.ckpt_path)
-
-    # Flip augmentation
-    model.test_flip = True
-    trainer.test(model, test_dataloaders=test_loader, ckpt_path=args.ckpt_path)
-
-    # Multi-scale (+flip) augmentation
-    model.test_scales = [.5, .75, 1, 1.25, 1.5]
     trainer.test(model, test_dataloaders=test_loader, ckpt_path=args.ckpt_path)
 
 

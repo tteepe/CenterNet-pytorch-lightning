@@ -111,7 +111,7 @@ class CenterNet(pl.LightningModule):
             "--arch",
             default="dla_34",
             help="backbone architecture. Currently tested "
-            "res_18 | res_101 | resdcn_18 | resdcn_101 | dlav0_34 | dla_34 | hourglass",
+            "res_18 | res_101 | resdcn_18 | resdcn_101 | dla_34 | hourglass",
         )
 
         parser.add_argument("--learning_rate", type=float, default=25e-5)
