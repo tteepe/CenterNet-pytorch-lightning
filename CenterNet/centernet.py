@@ -84,24 +84,25 @@ class CenterNet(pl.LightningModule):
         outputs = self(img)
         loss, loss_stats = self.loss(outputs, target)
 
+        self.log(f"val_loss", loss, on_step=True, on_epoch=True, sync_dist=True)
+
+        for name, value in loss_stats.items():
+            self.log(f"val/{name}", value, on_step=False, on_epoch=True, sync_dist=True)
+
         return {"loss": loss, "loss_stats": loss_stats}
 
-    def validation_epoch_end(self, batch_parts_outputs):
-        if len(batch_parts_outputs) == 0:
-            return
-
-        val_loss = torch.stack([x["loss"] for x in batch_parts_outputs]).mean()
-        self.log(f"val_loss", val_loss)
-
-        loss_stats = batch_parts_outputs[0]["loss_stats"].keys()
-        for stat in loss_stats:
-            stat_mean = torch.stack(
-                [x["loss_stats"][stat] for x in batch_parts_outputs]
-            ).mean()
-            self.log(f"val/{stat}", stat_mean)
-
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+        lr_scheduler = {
+            "scheduler": torch.optim.lr_scheduler.MultiStepLR(
+                optimizer, milestones=self.learning_rate_milestones
+            ),
+            "name": "learning_rate",
+            "interval": "epoch",
+            "frequency": 1
+        }
+
+        return [optimizer], [lr_scheduler]
 
     @staticmethod
     def add_model_specific_args(parent_parser):
@@ -114,5 +115,5 @@ class CenterNet(pl.LightningModule):
         )
 
         parser.add_argument("--learning_rate", type=float, default=25e-5)
-
+        parser.add_argument("--learning_rate_milestones", default="90, 120")
         return parser

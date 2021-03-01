@@ -43,6 +43,7 @@ class CenterNetDetection(CenterNet):
         self,
         arch,
         learning_rate=1e-4,
+        learning_rate_milestones=None,
         hm_weight=1,
         wh_weight=1,
         off_weight=0.1,
@@ -54,15 +55,19 @@ class CenterNetDetection(CenterNet):
         super().__init__(arch)
 
         self.num_classes = num_classes
-        heads = {
-            "heatmap": self.num_classes,
-            "width_height": 2,
-            "regression": 2
-        }
-        self.heads = torch.nn.ModuleList([
-            CenterHead(heads, self.backbone.out_channels, self.head_conv)
-            for _ in range(self.num_stacks)
-        ])
+        heads = {"heatmap": self.num_classes, "width_height": 2, "regression": 2}
+        self.heads = torch.nn.ModuleList(
+            [
+                CenterHead(heads, self.backbone.out_channels, self.head_conv)
+                for _ in range(self.num_stacks)
+            ]
+        )
+
+        self.learning_rate_milestones = (
+            learning_rate_milestones
+            if learning_rate_milestones is not None
+            else []
+        )
 
         # Test
         self.test_coco = test_coco
@@ -71,6 +76,7 @@ class CenterNetDetection(CenterNet):
         self.test_scales = [1] if test_scales is None else test_scales
         self.test_flip = test_flip
 
+        # Loss
         self.criterion = FocalLoss()
         self.criterion_regression = RegL1Loss()
         self.criterion_width_height = RegL1Loss()
@@ -96,10 +102,16 @@ class CenterNetDetection(CenterNet):
 
             hm_loss += self.criterion(output["heatmap"], target["heatmap"])
             wh_loss += self.criterion_width_height(
-                output["width_height"], target["regression_mask"], target["indices"], target["width_height"]
+                output["width_height"],
+                target["regression_mask"],
+                target["indices"],
+                target["width_height"],
             )
             off_loss += self.criterion_regression(
-                output["regression"], target["regression_mask"], target["indices"], target["regression"]
+                output["regression"],
+                target["regression_mask"],
+                target["indices"],
+                target["regression"],
             )
 
         loss = (
@@ -131,7 +143,8 @@ class CenterNetDetection(CenterNet):
 
             img_scaled = VF.resize(img, [new_height, new_width])
             img_scaled = F.pad(
-                img_scaled, (pad_left_right, pad_left_right, pad_top_bottom, pad_top_bottom)
+                img_scaled,
+                (pad_left_right, pad_left_right, pad_top_bottom, pad_top_bottom),
             )
             img_scaled = VF.normalize(img_scaled, self.mean, self.std)
 
@@ -139,10 +152,12 @@ class CenterNetDetection(CenterNet):
                 img_scaled = torch.cat([img_scaled, VF.hflip(img_scaled)])
 
             images.append(img_scaled)
-            meta.append({
-                "scale": [new_width / width, new_height / height],
-                "padding": [pad_left_right, pad_top_bottom]
-            })
+            meta.append(
+                {
+                    "scale": [new_width / width, new_height / height],
+                    "padding": [pad_left_right, pad_top_bottom],
+                }
+            )
 
         # Forward
         outputs = []
@@ -151,8 +166,12 @@ class CenterNetDetection(CenterNet):
 
         if self.test_flip:
             for output in outputs:
-                output["heatmap"] = (output["heatmap"][0:1] + VF.hflip(output["heatmap"][1:2])) / 2
-                output["width_height"] = (output["width_height"][0:1] + VF.hflip(output["width_height"][1:2])) / 2
+                output["heatmap"] = (
+                    output["heatmap"][0:1] + VF.hflip(output["heatmap"][1:2])
+                ) / 2
+                output["width_height"] = (
+                    output["width_height"][0:1] + VF.hflip(output["width_height"][1:2])
+                ) / 2
                 output["regression"] = output["regression"][0:1]
 
         return image_id, outputs, meta
@@ -166,7 +185,9 @@ class CenterNetDetection(CenterNet):
             meta = metas[i]
 
             detection = ctdet_decode(
-                output["heatmap"].sigmoid_(), output["width_height"], reg=output["regression"]
+                output["heatmap"].sigmoid_(),
+                output["width_height"],
+                reg=output["regression"],
             )
             detection = detection.cpu().detach().squeeze()
 
@@ -189,7 +210,9 @@ class CenterNetDetection(CenterNet):
         # Merge detections
         results = {}
         for j in range(1, self.num_classes + 1):
-            results[j] = np.concatenate([detection[j] for detection in detections], axis=0)
+            results[j] = np.concatenate(
+                [detection[j] for detection in detections], axis=0
+            )
             if len(self.test_scales) > 1:
                 keep_indices = soft_nms(results[j], Nt=0.5, method=2)
                 results[j] = results[j][keep_indices]
@@ -238,12 +261,9 @@ class CenterNetDetection(CenterNet):
         if self.test_flip:
             prefix += "flip_"
 
-        self.log(f"test/{prefix}ap", coco_eval.stats[0])
-        self.log(f"test/{prefix}ap_50", coco_eval.stats[1])
-        self.log(f"test/{prefix}ap_75", coco_eval.stats[2])
-        self.log(f"test/{prefix}ap_S", coco_eval.stats[3])
-        self.log(f"test/{prefix}ap_M", coco_eval.stats[4])
-        self.log(f"test/{prefix}ap_L", coco_eval.stats[5])
+        stats = ["ap", "ap_50", "ap_75", "ap_S", "ap_M", "ap_L"]
+        for num, name in enumerate(stats):
+            self.log(f"test/{prefix}{name}", coco_eval.stats[num], sync_dist=True)
 
 
 def cli_main():
@@ -270,28 +290,33 @@ def cli_main():
     train_transform = ComposeSample(
         [
             ImageAugmentation(
-                iaa.Sequential([
-                    iaa.Sequential(
-                        [
-                            iaa.Fliplr(0.5),
-                            iaa.Sometimes(0.5, iaa.GaussianBlur(sigma=(0, 0.5))),
-                            iaa.LinearContrast((0.75, 1.5)),
-                            iaa.AdditiveGaussianNoise(
-                                loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5
-                            ),
-                            iaa.Multiply((0.8, 1.2), per_channel=0.1),
-                            iaa.Affine(
-                                scale={"x": (0.6, 1.4), "y": (0.6, 1.4)},
-                                translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
-                                rotate=(-5, 5),
-                                shear=(-3, 3),
-                            ),
-                        ],
-                        random_order=True
-                    ),
-                    iaa.PadToFixedSize(width=512, height=512),
-                    iaa.CropToFixedSize(width=512, height=512)
-                ]),
+                iaa.Sequential(
+                    [
+                        iaa.Sequential(
+                            [
+                                iaa.Fliplr(0.5),
+                                iaa.Sometimes(0.5, iaa.GaussianBlur(sigma=(0, 0.5))),
+                                iaa.LinearContrast((0.75, 1.5)),
+                                iaa.AdditiveGaussianNoise(
+                                    loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5
+                                ),
+                                iaa.Multiply((0.8, 1.2), per_channel=0.1),
+                                iaa.Affine(
+                                    scale={"x": (0.6, 1.4), "y": (0.6, 1.4)},
+                                    translate_percent={
+                                        "x": (-0.2, 0.2),
+                                        "y": (-0.2, 0.2),
+                                    },
+                                    rotate=(-5, 5),
+                                    shear=(-3, 3),
+                                ),
+                            ],
+                            random_order=True,
+                        ),
+                        iaa.PadToFixedSize(width=512, height=512),
+                        iaa.CropToFixedSize(width=512, height=512),
+                    ]
+                ),
                 torchvision.transforms.Compose(
                     [
                         torchvision.transforms.ToTensor(),
@@ -309,10 +334,12 @@ def cli_main():
     valid_transform = ComposeSample(
         [
             ImageAugmentation(
-                iaa.Sequential([
-                    iaa.PadToFixedSize(width=512, height=512),
-                    iaa.CropToFixedSize(width=512, height=512)
-                ]),
+                iaa.Sequential(
+                    [
+                        iaa.PadToFixedSize(width=512, height=512),
+                        iaa.CropToFixedSize(width=512, height=512),
+                    ]
+                ),
                 torchvision.transforms.Compose(
                     [
                         torchvision.transforms.ToTensor(),
@@ -366,7 +393,12 @@ def cli_main():
     # ------------
     # model
     # ------------
-    model = CenterNetDetection(args.arch, args.learning_rate, test_coco=coco_test.coco)
+    args.learning_rate_milestones = list(map(int, args.learning_rate_milestones.split(",")))
+    model = CenterNetDetection(
+        args.arch, args.learning_rate,
+        args.learning_rate_milestones,
+        test_coco=coco_test.coco
+    )
     if args.pretrained_weights_path:
         model.load_pretrained_weights(args.pretrained_weights_path)
 
@@ -379,7 +411,7 @@ def cli_main():
             mode="min",
             save_top_k=1,
             dirpath="model_weights",
-            filename=args.arch + "detection-{epoch:02d}-{val_loss:.2f}",
+            filename=args.arch + "-detection-{epoch:02d}-{val_loss:.2f}",
         )
     ]
 
