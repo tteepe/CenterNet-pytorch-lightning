@@ -1,3 +1,5 @@
+import copy
+
 import cv2
 import numpy as np
 
@@ -14,6 +16,7 @@ class ImageAugmentation:
     def __call__(self, img, target):
         # PIL to array BGR
         img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+        target = copy.deepcopy(target)
 
         # Prepare augmentables for imgaug
         bounding_boxes = []

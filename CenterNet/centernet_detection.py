@@ -231,7 +231,7 @@ class CenterNetDetection(CenterNet):
 
     def test_epoch_end(self, detections):
         if not self.test_coco:
-            return 0
+            return detections
 
         # Convert to COCO eval format
         # Format: imageID, x1, y1, w, h, score, class

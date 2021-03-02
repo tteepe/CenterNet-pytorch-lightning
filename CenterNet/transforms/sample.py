@@ -1,7 +1,10 @@
+import copy
+
 import torch
-import torchvision
 import numpy as np
 from collections import Callable
+
+import torchvision.transforms.functional as VF
 
 
 class ComposeSample:
@@ -44,25 +47,31 @@ class MultiSampleTransform:
 
 
 class PoseFlip:
+    flip_idx_array = [
+        0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15,
+    ]
+
     def __init__(self, flip_probability=0.5, num_joints=17):
         self.flip_probability = flip_probability
 
         self.num_joints = num_joints
-        self.flip_idx_array = [
-            0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15,
-        ]
 
     def __call__(self, img, target):
         if torch.rand(1) < self.flip_probability:
-            torchvision.transforms.RandomHorizontalFlip(img)
+            img = VF.hflip(img)
+            target = copy.deepcopy(target)
 
-            for ann in target:
-                if 'num_keypoints' not in ann or ann['num_keypoints'] == 0:
+            for i in range(len(target)):
+                # change x1
+                bbox = target[i]["bbox"]
+                bbox[0] = img.shape[3] - (bbox[0] + bbox[2]) - 1
+
+                if 'num_keypoints' not in target[i] or target[i]['num_keypoints'] == 0:
                     continue
 
-                points = np.array(ann['keypoints'], np.float32).reshape(self.num_joints, 3)
+                points = np.array(target[i]['keypoints'], np.float32).reshape(self.num_joints, 3)
                 points_flipped = points[self.flip_idx_array, :]
 
-                ann['keypoints'] = points_flipped.reshape(-1).tolist()
+                target[i]['keypoints'] = points_flipped.reshape(-1).tolist()
 
         return img, target

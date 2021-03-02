@@ -1,11 +1,9 @@
-from pycocotools.coco import COCO
 from pytorch_lightning import Trainer, seed_everything
 from torch.utils.data import DataLoader
 
 from tests.utilities import CocoFakeDataset
 
 from centernet_detection import CenterNetDetection
-from transforms import ComposeSample, CategoryIdToClass
 from transforms.ctdet import CenterDetectionSample
 
 
@@ -15,10 +13,7 @@ def test_detection():
     """
     seed_everything(1234)
     dataset = CocoFakeDataset(
-        transforms=ComposeSample([
-            CategoryIdToClass(range(0, 100)),
-            CenterDetectionSample(),
-        ])
+        transforms=CenterDetectionSample()
     )
 
     test_val_loader = DataLoader(
@@ -36,6 +31,8 @@ def test_detection():
 
     model = CenterNetDetection(
         "dla_34",
+        test_flip=True,
+        test_scales=[.5, 1, 1.5]
     )
 
     trainer = Trainer(

@@ -58,7 +58,7 @@ class CenterDetectionSample:
         for k in range(num_objects):
             ann = target[k]
             bbox = self._coco_box_to_bbox(ann["bbox"])
-            cls_id = ann["class_id"]
+            cls_id = ann["class_id"] if "class_id" in ann else int(ann["category_id"])
 
             # Scale to output size
             bbox[:2] = self.scale_point(bbox[:2], (output_h, output_w))
