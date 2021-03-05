@@ -8,4 +8,4 @@ pycocotools~=2.0.2
 pytorch-lightning~=1.2.1
 setuptools~=54.0.0
 torchvision~=0.8.2
-torch~=1.7.1
+torch~=1.8.0
