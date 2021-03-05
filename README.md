@@ -72,7 +72,7 @@ trainer.test(test_dataloaders=test)
 ```
 
 ## BibTeX
-If you want to cite the implementation feel free to use this or [zendo](https://zenodo.org/record/4569502):
+If you want to cite the implementation feel free to use this or [zenodo](https://zenodo.org/record/4569502):
 
 ```bibtex
 @article{teepe2021centernet,
