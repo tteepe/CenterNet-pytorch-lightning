@@ -47,7 +47,12 @@ def cli_test():
     # ------------
     # model
     # ------------
-    model = CenterNetDetection(args.arch, args.learning_rate, test_coco=coco_test.coco)
+    model = CenterNetDetection(
+        args.arch,
+        args.learning_rate,
+        test_coco=coco_test.coco,
+        test_coco_ids=list(sorted(coco_test.coco.imgs.keys()))
+    )
     if args.pretrained_weights_path:
         model.load_pretrained_weights(args.pretrained_weights_path)
 
