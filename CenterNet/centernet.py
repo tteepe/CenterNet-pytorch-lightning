@@ -27,7 +27,7 @@ class CenterNet(pl.LightningModule):
             "wh": "width_height",
             "reg": "regression",
             "hm_hp": "heatmap_keypoints",
-            "hp_offset": "heatpoint_offset",
+            "hp_offset": "heatmap_keypoints_offset",
             "hps": "keypoints",
         }
 
@@ -74,6 +74,8 @@ class CenterNet(pl.LightningModule):
         outputs = self(img)
         loss, loss_stats = self.loss(outputs, target)
 
+        self.log(f"train_loss", loss, on_epoch=True)
+
         for key, value in loss_stats.items():
             self.log(f"train/{key}", value)
 
@@ -84,10 +86,10 @@ class CenterNet(pl.LightningModule):
         outputs = self(img)
         loss, loss_stats = self.loss(outputs, target)
 
-        self.log(f"val_loss", loss, on_step=True, on_epoch=True, sync_dist=True)
+        self.log(f"val_loss", loss, on_epoch=True, sync_dist=True)
 
         for name, value in loss_stats.items():
-            self.log(f"val/{name}", value, on_step=False, on_epoch=True, sync_dist=True)
+            self.log(f"val/{name}", value, on_epoch=True, sync_dist=True)
 
         return {"loss": loss, "loss_stats": loss_stats}
 

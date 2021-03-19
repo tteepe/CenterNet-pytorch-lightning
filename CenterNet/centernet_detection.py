@@ -45,8 +45,8 @@ class CenterNetDetection(CenterNet):
         learning_rate=1e-4,
         learning_rate_milestones=None,
         hm_weight=1,
-        wh_weight=1,
-        off_weight=0.1,
+        wh_weight=0.1,
+        off_weight=1,
         num_classes=80,
         test_coco=None,
         test_coco_ids=None,
@@ -167,12 +167,8 @@ class CenterNetDetection(CenterNet):
 
         if self.test_flip:
             for output in outputs:
-                output["heatmap"] = (
-                    output["heatmap"][0:1] + VF.hflip(output["heatmap"][1:2])
-                ) / 2
-                output["width_height"] = (
-                    output["width_height"][0:1] + VF.hflip(output["width_height"][1:2])
-                ) / 2
+                output["heatmap"] = (output["heatmap"][0:1] + VF.hflip(output["heatmap"][1:2])) / 2
+                output["width_height"] = (output["width_height"][0:1] + VF.hflip(output["width_height"][1:2])) / 2
                 output["regression"] = output["regression"][0:1]
 
         return image_id, outputs, meta
@@ -340,8 +336,11 @@ def cli_main():
             ImageAugmentation(
                 iaa.Sequential(
                     [
+                        iaa.Resize({
+                            "shorter-side": "keep-aspect-ratio",
+                            "longer-side": 500
+                        }),
                         iaa.PadToFixedSize(width=512, height=512),
-                        iaa.CropToFixedSize(width=512, height=512),
                     ]
                 ),
                 torchvision.transforms.Compose(
@@ -358,9 +357,7 @@ def cli_main():
         ]
     )
 
-    test_transform = ComposeSample(
-        [ImageAugmentation(img_transforms=torchvision.transforms.ToTensor())]
-    )
+    test_transform = ImageAugmentation(img_transforms=torchvision.transforms.ToTensor())
 
     coco_train = CocoDetection(
         os.path.join(args.image_root, "train2017"),
@@ -414,12 +411,13 @@ def cli_main():
         ModelCheckpoint(
             monitor="val_loss",
             mode="min",
-            save_top_k=1,
+            save_top_k=-1,
             save_last=True,
+            period=10,
             dirpath="model_weights",
             filename=args.arch + "-detection-{epoch:02d}-{val_loss:.2f}",
         ),
-        LearningRateMonitor(logging_interval='epoch')
+        LearningRateMonitor(logging_interval='step')
     ]
 
     trainer = pl.Trainer.from_argparse_args(args)
