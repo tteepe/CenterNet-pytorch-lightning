@@ -56,6 +56,10 @@ def cli_test():
     if args.pretrained_weights_path:
         model.load_pretrained_weights(args.pretrained_weights_path)
 
+    if args.ckpt_path:
+        ckpt = pl.utilities.cloud_io.load(args.ckpt_path)
+        model.load_state_dict(ckpt['state_dict'])
+
     # ------------
     # testing
     # ------------
@@ -63,7 +67,7 @@ def cli_test():
     args.test_scales = [.5, .75, 1, 1.25, 1.5] if args.multi_scale else None
     trainer = pl.Trainer.from_argparse_args(args)
 
-    trainer.test(model, test_dataloaders=test_loader, ckpt_path=args.ckpt_path)
+    trainer.test(model, test_dataloaders=test_loader)
 
 
 if __name__ == "__main__":
