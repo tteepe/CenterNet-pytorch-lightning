@@ -47,14 +47,14 @@ class MultiPoseSample:
         keypoints_mask = torch.zeros(
             (self.max_objects, self.num_joints * 2), dtype=torch.bool
         )
-
-        heatpoint_offset = torch.zeros(
+        heatmap_keypoints_offset = torch.zeros(
             (self.max_objects * self.num_joints, 2), dtype=torch.float32
         )
-        heatpoint_indices = torch.zeros(
+
+        heatmap_keypoints_indices = torch.zeros(
             (self.max_objects * self.num_joints), dtype=torch.int64
         )
-        heatpoint_mask = torch.zeros(
+        heatmap_keypoints_mask = torch.zeros(
             (self.max_objects * self.num_joints), dtype=torch.bool
         )
 
@@ -88,15 +88,15 @@ class MultiPoseSample:
                         self.scale_point(pts[j, :2], (output_h, output_w))
                     )
 
-                    keypoints[k, j * 2 : j * 2 + 2] = pts[j, :2] - ct_int
-                    keypoints_mask[k, j * 2 : j * 2 + 2] = 1
+                    keypoints[k, j * 2: j * 2 + 2] = pts[j, :2] - ct_int
+                    keypoints_mask[k, j * 2: j * 2 + 2] = 1
 
                     pt_int = pts[j, :2].to(torch.int32)
-                    heatpoint_offset[k * self.num_joints + j] = pts[j, :2] - pt_int
-                    heatpoint_indices[k * self.num_joints + j] = (
+                    heatmap_keypoints_offset[k * self.num_joints + j] = pts[j, :2] - pt_int
+                    heatmap_keypoints_indices[k * self.num_joints + j] = (
                         pt_int[1] * output_w + pt_int[0]
                     )
-                    heatpoint_mask[k * self.num_joints + j] = 1
+                    heatmap_keypoints_mask[k * self.num_joints + j] = 1
 
                     draw_gaussian(heatmap_keypoints[j], pt_int, hp_radius)
 
@@ -104,9 +104,9 @@ class MultiPoseSample:
             "heatmap_keypoints": heatmap_keypoints,
             "keypoints": keypoints,
             "keypoints_mask": keypoints_mask,
-            "heatpoint_offset": heatpoint_offset,
-            "heatpoint_indices": heatpoint_indices,
-            "heatpoint_mask": heatpoint_mask,
+            "heatmap_keypoints_offset": heatmap_keypoints_offset,
+            "heatmap_keypoints_indices": heatmap_keypoints_indices,
+            "heatmap_keypoints_mask": heatmap_keypoints_mask,
         }
 
         return img, ret
