@@ -386,8 +386,8 @@ def cli_main():
                               os.path.join(args.annotation_root, 'person_keypoints_val2017.json'),
                               transforms=test_transform)
 
-    # train_loader = DataLoader(coco_train, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True)
-    # val_loader = DataLoader(coco_val, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True)
+    train_loader = DataLoader(coco_train, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True)
+    val_loader = DataLoader(coco_val, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True)
     test_loader = DataLoader(coco_test, batch_size=1, num_workers=0)
 
     # ------------
@@ -398,15 +398,13 @@ def cli_main():
         args.learning_rate_milestones,
         test_coco=coco_test.coco,
         test_coco_ids=list(sorted(coco_test.coco.imgs.keys())),
-        # test_flip=True
     )
-    model.load_pretrained_weights("../model_weights/multi_pose_dla_3x.pth")
 
     # ------------
     # training
     # ------------
     trainer = pl.Trainer.from_argparse_args(args)
-    # trainer.fit(model, train_loader, val_loader)
+    trainer.fit(model, train_loader, val_loader)
 
     # ------------
     # testing
