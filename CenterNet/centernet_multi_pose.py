@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import torchvision.transforms.functional as VF
 import pytorch_lightning as pl
 from pycocotools.cocoeval import COCOeval
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from torch.utils.data import DataLoader
 from torchvision.datasets import CocoDetection
 
@@ -36,6 +37,7 @@ class CenterNetMultiPose(CenterNet):
         self,
         arch,
         learning_rate=1e-4,
+        learning_rate_milestones=None,
         hm_weight=1,
         wh_weight=0.1,
         off_weight=1,
@@ -56,10 +58,16 @@ class CenterNetMultiPose(CenterNet):
             "heatmap_keypoints": 17,
             "heatmap_keypoints_offset": 2,
         }
-        self.heads = torch.nn.ModuleList([
-            CenterHead(heads, self.backbone.out_channels, self.head_conv)
-            for _ in range(self.num_stacks)
-        ])
+        self.heads = torch.nn.ModuleList(
+            [
+                CenterHead(heads, self.backbone.out_channels, self.head_conv)
+                for _ in range(self.num_stacks)
+            ]
+        )
+
+        self.learning_rate_milestones = (
+            learning_rate_milestones if learning_rate_milestones is not None else []
+        )
 
         # Test
         self.test_coco = test_coco
@@ -67,7 +75,6 @@ class CenterNetMultiPose(CenterNet):
         self.test_max_per_image = 20
         self.test_scales = [1] if test_scales is None else test_scales
         self.test_flip = test_flip
-        self.flip_idx = torch.tensor(self.flip_idx_array)
 
         # Loss
         self.criterion = FocalLoss()
@@ -99,14 +106,23 @@ class CenterNetMultiPose(CenterNet):
 
             hm_loss += self.criterion(output["heatmap"], target["heatmap"])
             wh_loss += self.criterion_width_height(
-                output["width_height"], target["regression_mask"], target["indices"], target["width_height"]
+                output["width_height"],
+                target["regression_mask"],
+                target["indices"],
+                target["width_height"],
             )
             off_loss += self.criterion_regularizer(
-                output["regression"], target["regression_mask"], target["indices"], target["regression"]
+                output["regression"],
+                target["regression_mask"],
+                target["indices"],
+                target["regression"],
             )
 
             kp_loss += self.criterion_keypoints(
-                output["keypoints"], target["keypoints_mask"], target["indices"], target["keypoints"]
+                output["keypoints"],
+                target["keypoints_mask"],
+                target["indices"],
+                target["keypoints"],
             )
             hm_kp_loss += self.criterion_heatmap_keypoints(
                 output["heatmap_keypoints"], target["heatmap_keypoints"]
@@ -119,13 +135,13 @@ class CenterNetMultiPose(CenterNet):
             )
 
         loss = (
-                   self.hparams.hm_weight * hm_loss
-                   + self.hparams.wh_weight * wh_loss
-                   + self.hparams.off_weight * off_loss
-                   + self.hparams.hp_weight * kp_loss
-                   + self.hparams.hm_hp_weight * hm_kp_loss
-                   + self.hparams.off_weight * hm_offset_loss
-               ) / num_stacks
+            self.hparams.hm_weight * hm_loss
+            + self.hparams.wh_weight * wh_loss
+            + self.hparams.off_weight * off_loss
+            + self.hparams.hp_weight * kp_loss
+            + self.hparams.hm_hp_weight * hm_kp_loss
+            + self.hparams.off_weight * hm_offset_loss
+        ) / num_stacks
 
         loss_stats = {
             "loss": loss,
@@ -208,7 +224,7 @@ class CenterNetMultiPose(CenterNet):
                 output["keypoints"],
                 reg=output["regression"],
                 hm_hp=output["heatmap_keypoints"].sigmoid_(),
-                hp_offset=output["heatmap_keypoints_offset"]
+                hp_offset=output["heatmap_keypoints_offset"],
             )
             detection = detection.cpu().detach().squeeze()
 
@@ -260,17 +276,27 @@ class CenterNetMultiPose(CenterNet):
                 bbox[3] -= bbox[1]
                 score = detection[4]
 
-                keypoints = np.concatenate([
-                    np.array(detection[5:39], dtype=np.float32).reshape(-1, 2),
-                    np.ones((17, 1), dtype=np.float32)], axis=1).reshape(51).tolist()
+                keypoints = (
+                    np.concatenate(
+                        [
+                            np.array(detection[5:39], dtype=np.float32).reshape(-1, 2),
+                            np.ones((17, 1), dtype=np.float32),
+                        ],
+                        axis=1,
+                    )
+                    .reshape(51)
+                    .tolist()
+                )
 
-                data.append({
-                    "image_id": int(image_id),
-                    "category_id": int(category_id),
-                    "bbox": bbox,
-                    "score": score,
-                    "keypoints": keypoints
-                })
+                data.append(
+                    {
+                        "image_id": int(image_id),
+                        "category_id": int(category_id),
+                        "bbox": bbox,
+                        "score": score,
+                        "keypoints": keypoints,
+                    }
+                )
 
         coco_detections = self.test_coco.loadRes(data)
 
@@ -344,65 +370,102 @@ def cli_main():
                 ),
             ),
             PoseFlip(0.5),
-            MultiSampleTransform([
-                CenterDetectionSample(),
-                MultiPoseSample()
-            ])
-        ])
+            MultiSampleTransform([CenterDetectionSample(), MultiPoseSample()]),
+        ]
+    )
 
-    valid_transform = ComposeSample([
-        ImageAugmentation(
-            iaa.Sequential(
-                [
-                    iaa.Resize({
-                        "shorter-side": "keep-aspect-ratio",
-                        "longer-side": 500
-                    }),
-                    iaa.PadToFixedSize(width=512, height=512),
-                ]
+    valid_transform = ComposeSample(
+        [
+            ImageAugmentation(
+                iaa.Sequential(
+                    [
+                        iaa.Resize(
+                            {"shorter-side": "keep-aspect-ratio", "longer-side": 500}
+                        ),
+                        iaa.PadToFixedSize(width=512, height=512),
+                    ]
+                ),
+                torchvision.transforms.Compose(
+                    [
+                        torchvision.transforms.ToTensor(),
+                        torchvision.transforms.Normalize(
+                            CenterNetMultiPose.mean,
+                            CenterNetMultiPose.std,
+                            inplace=True,
+                        ),
+                    ]
+                ),
             ),
-            torchvision.transforms.Compose([
-                torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize(CenterNetMultiPose.mean, CenterNetMultiPose.std, inplace=True)
-            ])
-        ),
-        MultiSampleTransform([
-            CenterDetectionSample(),
-            MultiPoseSample()
-        ])
-    ])
+            MultiSampleTransform([CenterDetectionSample(), MultiPoseSample()]),
+        ]
+    )
 
     test_transform = ImageAugmentation(img_transforms=torchvision.transforms.ToTensor())
 
-    coco_train = CocoDetection(os.path.join(args.image_root, 'train2017'),
-                               os.path.join(args.annotation_root, 'person_keypoints_train2017.json'),
-                               transforms=train_transform)
+    coco_train = CocoDetection(
+        os.path.join(args.image_root, "train2017"),
+        os.path.join(args.annotation_root, "person_keypoints_train2017.json"),
+        transforms=train_transform,
+    )
 
-    coco_val = CocoDetection(os.path.join(args.image_root, 'val2017'),
-                             os.path.join(args.annotation_root, 'person_keypoints_val2017.json'),
-                             transforms=valid_transform)
+    coco_val = CocoDetection(
+        os.path.join(args.image_root, "val2017"),
+        os.path.join(args.annotation_root, "person_keypoints_val2017.json"),
+        transforms=valid_transform,
+    )
 
-    coco_test = CocoDetection(os.path.join(args.image_root, 'val2017'),
-                              os.path.join(args.annotation_root, 'person_keypoints_val2017.json'),
-                              transforms=test_transform)
+    coco_test = CocoDetection(
+        os.path.join(args.image_root, "val2017"),
+        os.path.join(args.annotation_root, "person_keypoints_val2017.json"),
+        transforms=test_transform,
+    )
 
-    train_loader = DataLoader(coco_train, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True)
-    val_loader = DataLoader(coco_val, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True)
+    train_loader = DataLoader(
+        coco_train,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        pin_memory=True,
+    )
+    val_loader = DataLoader(
+        coco_val,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        pin_memory=True,
+    )
     test_loader = DataLoader(coco_test, batch_size=1, num_workers=0)
 
     # ------------
     # model
     # ------------
+    args.learning_rate_milestones = list(
+        map(int, args.learning_rate_milestones.split(","))
+    )
     model = CenterNetMultiPose(
-        args.arch, args.learning_rate,
+        args.arch,
+        args.learning_rate,
         args.learning_rate_milestones,
         test_coco=coco_test.coco,
         test_coco_ids=list(sorted(coco_test.coco.imgs.keys())),
     )
+    if args.pretrained_weights_path:
+        model.load_pretrained_weights(args.pretrained_weights_path)
 
     # ------------
     # training
     # ------------
+    args.callbacks = [
+        ModelCheckpoint(
+            monitor="val_loss",
+            mode="min",
+            save_top_k=-1,
+            save_last=True,
+            period=10,
+            dirpath="model_weights",
+            filename=args.arch + "-detection-{epoch:02d}-{val_loss:.2f}",
+        ),
+        LearningRateMonitor(logging_interval="step"),
+    ]
+
     trainer = pl.Trainer.from_argparse_args(args)
     trainer.fit(model, train_loader, val_loader)
 

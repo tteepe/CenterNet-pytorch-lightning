@@ -43,10 +43,8 @@ def test_multi_pose():
     )
     trainer.fit(model, test_val_loader, test_val_loader)
 
-    results = trainer.test(model, test_dataloaders=test_loader)
-
-    assert results
+    trainer.test(model, test_dataloaders=test_loader)
 
 
 if __name__ == "__main__":
-    test_detection()
+    test_multi_pose()
