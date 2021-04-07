@@ -2,17 +2,19 @@ import torch
 from models import create_model
 from models.heads import CenterHead
 
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
 supported_backbones = [
     "res_18", "res_101", "resdcn_18", "resdcn_101", "dla_34", "hourglass"
 ]
 
 
 def test_models():
-    sample_input = torch.rand((1, 3, 512, 512))
+    sample_input = torch.rand((1, 3, 512, 512), device=device)
 
     for arch in supported_backbones:
         print(f"Testing: {arch}")
-        model = create_model(arch)
+        model = create_model(arch).to(device)
         heads = {
             "heatmap": 1,
             "width_height": 2,
@@ -22,7 +24,7 @@ def test_models():
             "keypoints": 34,
         }
 
-        head = CenterHead(heads, model.out_channels, 64)
+        head = CenterHead(heads, model.out_channels, 64).to(device)
 
         out_backbone = model(sample_input)
         output = head(out_backbone[-1])

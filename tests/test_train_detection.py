@@ -1,4 +1,5 @@
 from pytorch_lightning import Trainer, seed_everything
+import torch
 from torch.utils.data import DataLoader
 
 from tests.utilities import CocoFakeDataset
@@ -39,7 +40,8 @@ def test_detection():
         limit_train_batches=2,
         limit_val_batches=1,
         limit_test_batches=1,
-        max_epochs=1
+        max_epochs=1,
+        gpus=1 if torch.cuda.is_available() else 0
     )
     trainer.fit(model, test_val_loader, test_val_loader)
 
