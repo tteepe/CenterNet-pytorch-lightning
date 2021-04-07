@@ -310,6 +310,19 @@ class CenterNetMultiPose(CenterNet):
         coco_eval.accumulate()
         coco_eval.summarize()
 
+        prefix = ""
+        if len(self.test_scales) > 1:
+            prefix += "multi-scale_"
+        if self.test_flip:
+            prefix += "flip_"
+
+        stats = ["ap", "ap_50", "ap_75", "ap_S", "ap_M", "ap_L"]
+        for num, name in enumerate(stats):
+            self.log(f"test/kp_{prefix}{name}", coco_eval_kp.stats[num], sync_dist=True)
+
+        for num, name in enumerate(stats):
+            self.log(f"test/bbox_{prefix}{name}", coco_eval.stats[num], sync_dist=True)
+
 
 def cli_main():
     pl.seed_everything(5318008)
@@ -433,7 +446,7 @@ def cli_main():
         num_workers=args.num_workers,
         pin_memory=True,
     )
-    test_loader = DataLoader(coco_test, batch_size=1, num_workers=0)
+    test_loader = DataLoader(coco_test, batch_size=1, num_workers=0, pin_memory=True)
 
     # ------------
     # model
