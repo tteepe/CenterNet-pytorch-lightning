@@ -29,7 +29,7 @@ from utils.nms import soft_nms_39
 class CenterNetMultiPose(CenterNet):
     mean = [0.408, 0.447, 0.470]
     std = [0.289, 0.274, 0.278]
-    flip_idx_array = [
+    flip_idx = [
         0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15,
     ]
 
@@ -201,7 +201,7 @@ class CenterNetMultiPose(CenterNet):
                 num, points, height, width = output["keypoints"][1:2].shape
                 flipped_keypoints = VF.hflip(output["keypoints"][1:2]).view(1, points // 2, 2, height, width)
                 flipped_keypoints[:, :, 0, :, :] *= -1
-                flipped_keypoints = flipped_keypoints[0:1, self.flip_idx_array].view(1, points, height, width)
+                flipped_keypoints = flipped_keypoints[0:1, self.flip_idx].view(1, points, height, width)
                 output["keypoints"] = (output["keypoints"][0:1] + flipped_keypoints) / 2
 
                 flipped_heatmap = VF.hflip(output["heatmap_keypoints"][1:2])[0:1, self.flip_idx]
@@ -321,6 +321,7 @@ def cli_main():
     parser.add_argument("image_root")
     parser.add_argument("annotation_root")
 
+    parser.add_argument("--pretrained_weights_path")
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--num_workers", default=8, type=int)
     parser = pl.Trainer.add_argparse_args(parser)

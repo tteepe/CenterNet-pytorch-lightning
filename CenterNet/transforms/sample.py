@@ -64,7 +64,8 @@ class PoseFlip:
             for i in range(len(target)):
                 # change x1
                 bbox = target[i]["bbox"]
-                bbox[0] = img.shape[3] - (bbox[0] + bbox[2]) - 1
+                width = img.shape[2]
+                bbox[0] = width - (bbox[0] + bbox[2]) - 1
 
                 if 'num_keypoints' not in target[i] or target[i]['num_keypoints'] == 0:
                     continue
@@ -73,5 +74,6 @@ class PoseFlip:
                 points_flipped = points[self.flip_idx_array, :]
 
                 target[i]['keypoints'] = points_flipped.reshape(-1).tolist()
+                target[i]["bbox"] = bbox
 
         return img, target
