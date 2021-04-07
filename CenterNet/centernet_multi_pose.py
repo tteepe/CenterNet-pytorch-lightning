@@ -111,7 +111,7 @@ class CenterNetMultiPose(CenterNet):
                 target["indices"],
                 target["width_height"],
             )
-            off_loss += self.criterion_regularizer(
+            off_loss += self.criterion_regression(
                 output["regression"],
                 target["regression_mask"],
                 target["indices"],
