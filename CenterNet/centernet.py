@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 import torch
 import pytorch_lightning as pl
 
-from models import create_model
+from .models import create_model
 
 
 class CenterNet(pl.LightningModule):

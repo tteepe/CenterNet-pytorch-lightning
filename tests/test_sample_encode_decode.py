@@ -5,10 +5,10 @@ import torchvision
 import imgaug.augmenters as iaa
 import pytest
 
-from decode.ctdet import ctdet_decode
-from transforms import CategoryIdToClass, ImageAugmentation
-from transforms.sample import ComposeSample
-from transforms.ctdet import CenterDetectionSample
+from CenterNet.decode.ctdet import ctdet_decode
+from CenterNet.transforms import CategoryIdToClass, ImageAugmentation
+from CenterNet.transforms.sample import ComposeSample
+from CenterNet.transforms.ctdet import CenterDetectionSample
 
 
 def test_cdet_encoding_decoding():

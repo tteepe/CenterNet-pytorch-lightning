@@ -1,6 +1,6 @@
 import torch
-from models import create_model
-from models.heads import CenterHead
+from CenterNet.models import create_model
+from CenterNet.models.heads import CenterHead
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"

@@ -1,6 +1,6 @@
 import torch
 
-from utils.decode import _nms, _topk, _transpose_and_gather_feat
+from ..utils.decode import _nms, _topk, _transpose_and_gather_feat
 
 
 def ctdet_decode(heat, wh, reg=None, K=100):

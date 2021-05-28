@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-from utils.decode import _nms, _topk, _topk_channel, _transpose_and_gather_feat
+from ..utils.decode import _nms, _topk, _topk_channel, _transpose_and_gather_feat
 
 
 def multi_pose_decode(heat, wh, kps, reg=None, hm_hp=None, hp_offset=None, K=100):

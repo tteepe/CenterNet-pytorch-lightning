@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import imgaug.augmenters as iaa
 
-from transforms import ImageAugmentation, PoseFlip
+from CenterNet.transforms import ImageAugmentation, PoseFlip
 
 
 def test_image_augmentation():

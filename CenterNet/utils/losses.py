@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils.decode import _transpose_and_gather_feat
+from .decode import _transpose_and_gather_feat
 
 
 def _neg_loss(pred, gt):

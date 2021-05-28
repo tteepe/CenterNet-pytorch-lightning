@@ -13,15 +13,15 @@ import pytorch_lightning as pl
 from pycocotools.cocoeval import COCOeval
 from torchvision.datasets import CocoDetection
 
-from centernet import CenterNet
-from models.heads import CenterHead
-from transforms import CategoryIdToClass, ImageAugmentation
-from transforms.sample import ComposeSample
-from transforms.ctdet import CenterDetectionSample
-from decode.ctdet import ctdet_decode
-from utils.losses import RegL1Loss, FocalLoss
-from utils.decode import sigmoid_clamped
-from utils.nms import soft_nms
+from .centernet import CenterNet
+from .models.heads import CenterHead
+from .transforms import CategoryIdToClass, ImageAugmentation
+from .transforms.sample import ComposeSample
+from .transforms.ctdet import CenterDetectionSample
+from .decode.ctdet import ctdet_decode
+from .utils.losses import RegL1Loss, FocalLoss
+from .utils.decode import sigmoid_clamped
+from .utils.nms import soft_nms
 
 
 class CenterNetDetection(CenterNet):

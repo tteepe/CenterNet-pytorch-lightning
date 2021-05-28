@@ -9,8 +9,10 @@ import math
 import logging
 
 import torch.nn as nn
-from models.backbones.DCNv2.DCN.dcn_v2 import DCN
 import torch.utils.model_zoo as model_zoo
+
+from .DCNv2.DCN.dcn_v2 import DCN
+
 
 BN_MOMENTUM = 0.1
 logger = logging.getLogger(__name__)

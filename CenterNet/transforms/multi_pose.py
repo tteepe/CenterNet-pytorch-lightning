@@ -3,7 +3,7 @@ import math
 import torch
 import numpy as np
 
-from utils.gaussian import draw_umich_gaussian, draw_msra_gaussian, gaussian_radius
+from ..utils.gaussian import draw_umich_gaussian, draw_msra_gaussian, gaussian_radius
 
 
 class MultiPoseSample:

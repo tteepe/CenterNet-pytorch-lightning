@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='CenterNet',
-    version='0.0.0',
+    version='0.1.0',
     description='Refactored version of CenterNet (Objects as Points). With PyTorch Lightning and imgaug.',
     author='Torben Teepe',
     author_email='torben@tee.pe',

@@ -5,11 +5,11 @@ import torchvision
 from torch.utils.data import DataLoader
 from torchvision.datasets import CocoDetection
 
-from centernet import CenterNet
-from centernet_detection import CenterNetDetection
-from centernet_multi_pose import CenterNetMultiPose
-from transforms import ImageAugmentation
-from transforms.sample import ComposeSample
+from .centernet import CenterNet
+from .centernet_detection import CenterNetDetection
+from .centernet_multi_pose import CenterNetMultiPose
+from .transforms import ImageAugmentation
+from .transforms.sample import ComposeSample
 
 task = {
     "detection": (CenterNetDetection, "instances_val2017.json"),

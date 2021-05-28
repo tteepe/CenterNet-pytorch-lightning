@@ -4,8 +4,8 @@ from torch.utils.data import DataLoader
 
 from tests.utilities import CocoFakeDataset
 
-from centernet_detection import CenterNetDetection
-from transforms.ctdet import CenterDetectionSample
+from CenterNet.centernet_detection import CenterNetDetection
+from CenterNet.transforms.ctdet import CenterDetectionSample
 
 
 def test_detection():

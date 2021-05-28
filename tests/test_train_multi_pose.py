@@ -2,12 +2,12 @@ from pytorch_lightning import Trainer, seed_everything
 import torch
 from torch.utils.data import DataLoader
 
-from tests.utilities import CocoFakeDataset
+from .utilities import CocoFakeDataset
 
-from centernet_multi_pose import CenterNetMultiPose
-from transforms import MultiSampleTransform
-from transforms.ctdet import CenterDetectionSample
-from transforms.multi_pose import MultiPoseSample
+from CenterNet.centernet_multi_pose import CenterNetMultiPose
+from CenterNet.transforms import MultiSampleTransform
+from CenterNet.transforms.ctdet import CenterDetectionSample
+from CenterNet.transforms.multi_pose import MultiPoseSample
 
 
 def test_multi_pose():
