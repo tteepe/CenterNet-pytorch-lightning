@@ -1,3 +1,4 @@
+DCNv2 @ git+https://github.com/tteepe/DCNv2@faef5bbf4f3c392b9e4d71e606edaab5ce4d0aaf
 imgaug~=0.4.0
 json_tricks~=3.15.5
 matplotlib~=3.4.2

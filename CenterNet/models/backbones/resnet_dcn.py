@@ -11,7 +11,7 @@ import logging
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 
-from .DCNv2.DCN.dcn_v2 import DCN
+from DCN.dcn_v2 import DCN
 
 
 BN_MOMENTUM = 0.1

@@ -1,3 +1,0 @@
-[submodule "CenterNet/models/backbones/DCNv2"]
-	path = CenterNet/models/backbones/DCNv2
-	url = https://github.com/tteepe/DCNv2
