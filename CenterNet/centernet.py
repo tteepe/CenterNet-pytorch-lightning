@@ -1,10 +1,9 @@
-import abc
 from argparse import ArgumentParser
 
 import torch
 import pytorch_lightning as pl
 
-from .models import create_model
+from CenterNet.models import create_model
 
 
 class CenterNet(pl.LightningModule):
@@ -65,7 +64,6 @@ class CenterNet(pl.LightningModule):
     def forward(self, x):
         return self.backbone.forward(x)
 
-    @abc.abstractmethod
     def loss(self, outputs, target):
         return 0, {}
 

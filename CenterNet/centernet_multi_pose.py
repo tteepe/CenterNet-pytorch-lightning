@@ -13,16 +13,16 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from torch.utils.data import DataLoader
 from torchvision.datasets import CocoDetection
 
-from .centernet import CenterNet
-from .models.heads import CenterHead
-from .transforms import ImageAugmentation
-from .transforms.ctdet import CenterDetectionSample
-from .transforms.multi_pose import MultiPoseSample
-from .transforms.sample import MultiSampleTransform, PoseFlip, ComposeSample
-from .decode.multi_pose import multi_pose_decode
-from .utils.decode import sigmoid_clamped
-from .utils.losses import RegL1Loss, FocalLoss, RegWeightedL1Loss
-from .utils.nms import soft_nms_39
+from CenterNet.centernet import CenterNet
+from CenterNet.models.heads import CenterHead
+from CenterNet.transforms import ImageAugmentation
+from CenterNet.transforms.ctdet import CenterDetectionSample
+from CenterNet.transforms.multi_pose import MultiPoseSample
+from CenterNet.transforms.sample import MultiSampleTransform, PoseFlip, ComposeSample
+from CenterNet.decode.multi_pose import multi_pose_decode
+from CenterNet.utils.decode import sigmoid_clamped
+from CenterNet.utils.losses import RegL1Loss, FocalLoss, RegWeightedL1Loss
+from CenterNet.utils.nms import soft_nms_39
 
 
 class CenterNetMultiPose(CenterNet):

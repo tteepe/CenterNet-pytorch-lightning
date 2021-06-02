@@ -51,9 +51,9 @@ python centernet_multi_pose.py
 This project is setup as a package which means you can now easily import any file into any other file like so:
 
 ```python
-from CenterNet.datasets.coco import CocoDetection
-from CenterNet.centernet_detection import CenterNetDetection
 from pytorch_lightning import Trainer
+from torchvision.datasets import CocoDetection
+from CenterNet import CenterNetDetection
 
 # model
 model = CenterNetDetection("dla_34")
