@@ -340,7 +340,7 @@ def cli_main():
                             "shorter-side": "keep-aspect-ratio",
                             "longer-side": 500
                         }),
-                        iaa.PadToFixedSize(width=512, height=512),
+                        iaa.PadToFixedSize(width=512, height=512, position="center"),
                     ]
                 ),
                 torchvision.transforms.Compose(
