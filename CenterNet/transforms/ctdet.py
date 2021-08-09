@@ -31,8 +31,8 @@ class CenterDetectionSample:
         x, y = point / self.down_ratio
         output_h, output_w = output_size
 
-        x = np.clip(x, 0, output_w - 1)
-        y = np.clip(y, 0, output_h - 1)
+        x = np.clip(x, 0, output_w)
+        y = np.clip(y, 0, output_h)
 
         return [x, y]
 
@@ -43,7 +43,7 @@ class CenterDetectionSample:
         output_w = input_w // self.down_ratio
 
         heatmap = torch.zeros(
-            (self.num_classes, output_w, output_h), dtype=torch.float32
+            (self.num_classes, output_h, output_w), dtype=torch.float32
         )
         width_height = torch.zeros((self.max_objects, 2), dtype=torch.float32)
         regression = torch.zeros((self.max_objects, 2), dtype=torch.float32)
