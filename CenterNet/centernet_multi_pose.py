@@ -13,7 +13,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from torch.utils.data import DataLoader
 from torchvision.datasets import CocoDetection
 
-from CenterNet.centernet import CenterNet
+from CenterNet import CenterNet
 from CenterNet.models.heads import CenterHead
 from CenterNet.transforms import ImageAugmentation
 from CenterNet.transforms.ctdet import CenterDetectionSample
@@ -192,20 +192,34 @@ class CenterNetMultiPose(CenterNet):
 
         if self.test_flip:
             for output in outputs:
-                output["heatmap"] = (output["heatmap"][0:1] + VF.hflip(output["heatmap"][1:2])) / 2
-                output["width_height"] = (output["width_height"][0:1] + VF.hflip(output["width_height"][1:2])) / 2
+                output["heatmap"] = (
+                    output["heatmap"][0:1] + VF.hflip(output["heatmap"][1:2])
+                ) / 2
+                output["width_height"] = (
+                    output["width_height"][0:1] + VF.hflip(output["width_height"][1:2])
+                ) / 2
                 output["regression"] = output["regression"][0:1]
 
                 # Flip pose aware
                 num, points, height, width = output["keypoints"][1:2].shape
-                flipped_keypoints = VF.hflip(output["keypoints"][1:2]).view(1, points // 2, 2, height, width)
+                flipped_keypoints = VF.hflip(output["keypoints"][1:2]).view(
+                    1, points // 2, 2, height, width
+                )
                 flipped_keypoints[:, :, 0, :, :] *= -1
-                flipped_keypoints = flipped_keypoints[0:1, self.flip_idx].view(1, points, height, width)
+                flipped_keypoints = flipped_keypoints[0:1, self.flip_idx].view(
+                    1, points, height, width
+                )
                 output["keypoints"] = (output["keypoints"][0:1] + flipped_keypoints) / 2
 
-                flipped_heatmap = VF.hflip(output["heatmap_keypoints"][1:2])[0:1, self.flip_idx]
-                output["heatmap_keypoints"] = (output["heatmap_keypoints"][0:1] + flipped_heatmap) / 2
-                output["heatmap_keypoints_offset"] = output["heatmap_keypoints_offset"][0:1]
+                flipped_heatmap = VF.hflip(output["heatmap_keypoints"][1:2])[
+                    0:1, self.flip_idx
+                ]
+                output["heatmap_keypoints"] = (
+                    output["heatmap_keypoints"][0:1] + flipped_heatmap
+                ) / 2
+                output["heatmap_keypoints_offset"] = output["heatmap_keypoints_offset"][
+                    0:1
+                ]
 
         return image_id, outputs, meta
 
@@ -383,7 +397,7 @@ def cli_main():
                 ),
             ),
             PoseFlip(0.5),
-            MultiSampleTransform([CenterDetectionSample(), MultiPoseSample()]),
+            MultiSampleTransform([CenterDetectionSample(num_classes=1), MultiPoseSample()]),
         ]
     )
 
@@ -409,7 +423,7 @@ def cli_main():
                     ]
                 ),
             ),
-            MultiSampleTransform([CenterDetectionSample(), MultiPoseSample()]),
+            MultiSampleTransform([CenterDetectionSample(num_classes=1), MultiPoseSample()]),
         ]
     )
 
