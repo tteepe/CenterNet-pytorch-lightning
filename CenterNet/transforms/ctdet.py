@@ -73,7 +73,7 @@ class CenterDetectionSample:
                 )
                 ct_int = ct.to(torch.int32)
 
-                draw_gaussian(heatmap[cls_id - 1], ct_int, radius)
+                draw_gaussian(heatmap[cls_id], ct_int, radius)
                 width_height[k] = torch.tensor([1.0 * w, 1.0 * h])
                 indices[k] = ct_int[1] * output_w + ct_int[0]
                 regression[k] = ct - ct_int
