@@ -1,11 +1,11 @@
 DCNv2 @ git+https://github.com/tteepe/DCNv2
 imgaug~=0.4.0
-json_tricks~=3.15.5
-matplotlib~=3.4.2
-numba~=0.53.1
-opencv-python~=4.5.3.56
-pycocotools~=2.0.2
+json_tricks
+matplotlib
+numba
+opencv-python
+pycocotools
 pytorch-lightning~=1.4.2
-setuptools~=57.4.0
+setuptools
 torchvision~=0.10.0
 torch~=1.9.0
