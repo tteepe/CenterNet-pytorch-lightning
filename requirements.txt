@@ -5,7 +5,7 @@ matplotlib
 numba
 opencv-python
 pycocotools
-pytorch-lightning~=1.4.6
+pytorch-lightning~=1.4.7
 setuptools
 torchvision~=0.10.0
 torch~=1.9.0
