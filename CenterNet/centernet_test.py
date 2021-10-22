@@ -1,15 +1,15 @@
 import os
 from argparse import ArgumentParser
 import pytorch_lightning as pl
-import torchvision
 from torch.utils.data import DataLoader
+import torchvision
 from torchvision.datasets import CocoDetection
 
-from .centernet import CenterNet
-from .centernet_detection import CenterNetDetection
-from .centernet_multi_pose import CenterNetMultiPose
-from .transforms import ImageAugmentation
-from .transforms.sample import ComposeSample
+from CenterNet.centernet import CenterNet
+from CenterNet.centernet_detection import CenterNetDetection
+from CenterNet.centernet_multi_pose import CenterNetMultiPose
+from CenterNet.transforms import ImageAugmentation
+from CenterNet.transforms.sample import ComposeSample
 
 task = {
     "detection": (CenterNetDetection, "instances_val2017.json"),
@@ -77,7 +77,7 @@ def cli_test():
     # testing
     # ------------
     trainer = pl.Trainer.from_argparse_args(args)
-    trainer.test(model, test_dataloaders=test_loader)
+    trainer.test(model, test_loader)
 
 
 if __name__ == "__main__":

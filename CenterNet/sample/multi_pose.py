@@ -3,7 +3,7 @@ import math
 import torch
 import numpy as np
 
-from ..utils.gaussian import draw_umich_gaussian, draw_msra_gaussian, gaussian_radius
+from CenterNet.utils.gaussian import draw_umich_gaussian, draw_msra_gaussian, gaussian_radius
 
 
 class MultiPoseSample:
@@ -39,7 +39,7 @@ class MultiPoseSample:
         output_w = input_w // self.down_ratio
 
         heatmap_keypoints = torch.zeros(
-            (self.num_joints, output_w, output_h), dtype=torch.float32
+            (self.num_joints, output_h, output_w), dtype=torch.float32
         )
         keypoints = torch.zeros(
             (self.max_objects, self.num_joints * 2), dtype=torch.float32

@@ -25,12 +25,12 @@ Some features of the original repository are not implemented yet but pull reques
 
 ## How to run   
 First, install dependencies   
-```bash
+```shell
 # Install ninja for DCNv2 JIT compilation
 sudo apt-get install ninja-build
 
 # clone CenterNet
-git clone --recurse-submodules https://github.com/tteepe/CenterNet-pytorch-lightning
+git clone https://github.com/tteepe/CenterNet-pytorch-lightning
 
 # install CenterNet
 cd CenterNet-pytorch-lightning
@@ -38,7 +38,7 @@ pip install -e .
 pip install -r requirements.txt
  ```   
  Next, navigate to any file and run it.   
- ```bash
+ ```shell
 # module folder
 cd CenterNet
 

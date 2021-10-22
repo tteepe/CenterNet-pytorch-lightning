@@ -3,7 +3,7 @@ import math
 import torch
 import numpy as np
 
-from ..utils.gaussian import draw_umich_gaussian, draw_msra_gaussian, gaussian_radius
+from CenterNet.utils.gaussian import draw_umich_gaussian, draw_msra_gaussian, gaussian_radius
 
 
 class CenterDetectionSample:
@@ -31,8 +31,8 @@ class CenterDetectionSample:
         x, y = point / self.down_ratio
         output_h, output_w = output_size
 
-        x = np.clip(x, 0, output_w)
-        y = np.clip(y, 0, output_h)
+        x = np.clip(x, 0, output_w - 1)
+        y = np.clip(y, 0, output_h - 1)
 
         return [x, y]
 
@@ -67,7 +67,7 @@ class CenterDetectionSample:
             h, w = bbox[3] - bbox[1], bbox[2] - bbox[0]
             if h > 0 and w > 0:
                 radius = gaussian_radius((math.ceil(h), math.ceil(w)))
-                radius = int(max(1e-5, radius))
+                radius = max(0, int(radius))
                 ct = torch.FloatTensor(
                     [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2]
                 )

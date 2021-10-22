@@ -2,10 +2,9 @@ from pytorch_lightning import Trainer, seed_everything
 import torch
 from torch.utils.data import DataLoader
 
-from tests.utilities import CocoFakeDataset
-
+from CenterNet.sample.ctdet import CenterDetectionSample
 from CenterNet.centernet_detection import CenterNetDetection
-from CenterNet.transforms.ctdet import CenterDetectionSample
+from tests.utilities import CocoFakeDataset
 
 
 def test_detection():

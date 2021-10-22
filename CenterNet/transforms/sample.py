@@ -65,15 +65,31 @@ class PoseFlip:
                 # change x1
                 bbox = target[i]["bbox"]
                 width = img.shape[2]
-                bbox[0] = width - (bbox[0] + bbox[2]) - 1
+                bbox[0] = width - bbox[0] - 1
+                bbox[2] = width - bbox[2] - 1
 
                 if 'num_keypoints' not in target[i] or target[i]['num_keypoints'] == 0:
                     continue
 
                 points = np.array(target[i]['keypoints'], np.float32).reshape(self.num_joints, 3)
+                points[:, 0] = width - points[:, 0] - 1
+                points[points[:, 2] == 0] = 0
                 points_flipped = points[self.flip_idx_array, :]
 
                 target[i]['keypoints'] = points_flipped.reshape(-1).tolist()
                 target[i]["bbox"] = bbox
 
         return img, target
+
+
+class CategoryIdToClass:
+    def __init__(self, valid_ids):
+        self.valid_ids = valid_ids
+        self.category_ids = {v: i for i, v in enumerate(self.valid_ids)}
+
+    def __call__(self, img, target):
+        for ann in target:
+            ann["class_id"] = int(self.category_ids[int(ann["category_id"])])
+
+        return img, target
+

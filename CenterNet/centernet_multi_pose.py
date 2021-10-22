@@ -10,14 +10,15 @@ import torchvision.transforms.functional as VF
 import pytorch_lightning as pl
 from pycocotools.cocoeval import COCOeval
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 from torchvision.datasets import CocoDetection
 
 from CenterNet import CenterNet
 from CenterNet.models.heads import CenterHead
+from CenterNet.sample.ctdet import CenterDetectionSample
+from CenterNet.sample.multi_pose import MultiPoseSample
 from CenterNet.transforms import ImageAugmentation
-from CenterNet.transforms.ctdet import CenterDetectionSample
-from CenterNet.transforms.multi_pose import MultiPoseSample
 from CenterNet.transforms.sample import MultiSampleTransform, PoseFlip, ComposeSample
 from CenterNet.decode.multi_pose import multi_pose_decode
 from CenterNet.utils.decode import sigmoid_clamped
@@ -53,8 +54,8 @@ class CenterNetMultiPose(CenterNet):
             "heatmap": 1,
             "width_height": 2,
             "regression": 2,
-            "keypoints": 34,
             "heatmap_keypoints": 17,
+            "keypoints": 34,
             "heatmap_keypoints_offset": 2,
         }
         self.heads = torch.nn.ModuleList(
@@ -178,12 +179,10 @@ class CenterNetMultiPose(CenterNet):
                 img_scaled = torch.cat([img_scaled, VF.hflip(img_scaled)])
 
             images.append(img_scaled)
-            meta.append(
-                {
-                    "scale": [new_width / width, new_height / height],
-                    "padding": [pad_left_right, pad_top_bottom],
-                }
-            )
+            meta.append({
+                "scale": [new_width / width, new_height / height],
+                "padding": [pad_left_right, pad_top_bottom],
+            })
 
         # Forward
         outputs = []
@@ -202,24 +201,14 @@ class CenterNetMultiPose(CenterNet):
 
                 # Flip pose aware
                 num, points, height, width = output["keypoints"][1:2].shape
-                flipped_keypoints = VF.hflip(output["keypoints"][1:2]).view(
-                    1, points // 2, 2, height, width
-                )
+                flipped_keypoints = VF.hflip(output["keypoints"][1:2]).view(1, points // 2, 2, height, width)
                 flipped_keypoints[:, :, 0, :, :] *= -1
-                flipped_keypoints = flipped_keypoints[0:1, self.flip_idx].view(
-                    1, points, height, width
-                )
+                flipped_keypoints = flipped_keypoints[0:1, self.flip_idx].view(1, points, height, width)
                 output["keypoints"] = (output["keypoints"][0:1] + flipped_keypoints) / 2
 
-                flipped_heatmap = VF.hflip(output["heatmap_keypoints"][1:2])[
-                    0:1, self.flip_idx
-                ]
-                output["heatmap_keypoints"] = (
-                    output["heatmap_keypoints"][0:1] + flipped_heatmap
-                ) / 2
-                output["heatmap_keypoints_offset"] = output["heatmap_keypoints_offset"][
-                    0:1
-                ]
+                flipped_heatmap = VF.hflip(output["heatmap_keypoints"][1:2])[0:1, self.flip_idx]
+                output["heatmap_keypoints"] = (output["heatmap_keypoints"][0:1] + flipped_heatmap) / 2
+                output["heatmap_keypoints_offset"] = output["heatmap_keypoints_offset"][0:1]
 
         return image_id, outputs, meta
 
@@ -290,26 +279,21 @@ class CenterNetMultiPose(CenterNet):
                 score = detection[4]
 
                 keypoints = (
-                    np.concatenate(
-                        [
-                            np.array(detection[5:39], dtype=np.float32).reshape(-1, 2),
-                            np.ones((17, 1), dtype=np.float32),
-                        ],
-                        axis=1,
-                    )
+                    np.concatenate([
+                        np.array(detection[5:39], dtype=np.float32).reshape(-1, 2),
+                        np.ones((17, 1), dtype=np.float32),
+                    ], axis=1)
                     .reshape(51)
                     .tolist()
                 )
 
-                data.append(
-                    {
-                        "image_id": int(image_id),
-                        "category_id": int(category_id),
-                        "bbox": bbox,
-                        "score": score,
-                        "keypoints": keypoints,
-                    }
-                )
+                data.append({
+                    "image_id": int(image_id),
+                    "category_id": int(category_id),
+                    "bbox": bbox,
+                    "score": score,
+                    "keypoints": keypoints,
+                })
 
         coco_detections = self.test_coco.loadRes(data)
 
@@ -357,75 +341,53 @@ def cli_main():
     # ------------
     # data
     # ------------
-    train_transform = ComposeSample(
-        [
-            ImageAugmentation(
-                iaa.Sequential(
-                    [
-                        iaa.Sequential(
-                            [
-                                iaa.Fliplr(0.5),
-                                iaa.Sometimes(0.5, iaa.GaussianBlur(sigma=(0, 0.5))),
-                                iaa.LinearContrast((0.75, 1.5)),
-                                iaa.AdditiveGaussianNoise(
-                                    loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5
-                                ),
-                                iaa.Multiply((0.8, 1.2), per_channel=0.1),
-                                iaa.Affine(
-                                    scale={"x": (0.6, 1.4), "y": (0.6, 1.4)},
-                                    translate_percent={
-                                        "x": (-0.2, 0.2),
-                                        "y": (-0.2, 0.2),
-                                    },
-                                    rotate=(-5, 5),
-                                    shear=(-3, 3),
-                                ),
-                            ],
-                            random_order=True,
-                        ),
-                        iaa.PadToFixedSize(width=512, height=512),
-                        iaa.CropToFixedSize(width=512, height=512),
-                    ]
-                ),
-                torchvision.transforms.Compose(
-                    [
-                        torchvision.transforms.ToTensor(),
-                        torchvision.transforms.Normalize(
-                            CenterNetMultiPose.mean, CenterNetMultiPose.std
-                        ),
-                    ]
-                ),
-            ),
-            PoseFlip(0.5),
-            MultiSampleTransform([CenterDetectionSample(num_classes=1), MultiPoseSample()]),
-        ]
-    )
+    train_transform = ComposeSample([
+        ImageAugmentation(
+            iaa.Sequential([
+                iaa.Resize({"shorter-side": "keep-aspect-ratio", "longer-side": 500}),
+                iaa.Sequential([
+                    iaa.Sometimes(0.25, iaa.GaussianBlur(sigma=(0, 0.5))),
+                    iaa.LinearContrast((0.75, 1.5)),
+                    iaa.AdditiveGaussianNoise(
+                        loc=0, scale=(0.0, 0.05 * 255), per_channel=0.5
+                    ),
+                    iaa.Multiply((0.8, 1.2), per_channel=0.1),
+                    iaa.Affine(
+                        scale={"x": (0.75, 1.25), "y": (0.75, 1.15)},
+                        translate_percent={
+                            "x": (-0.2, 0.2),
+                            "y": (-0.2, 0.2),
+                        },
+                        rotate=(-5, 5),
+                        shear=(-3, 3),
+                    ),
+                ], random_order=True),
+                iaa.PadToFixedSize(width=500, height=500),
+                iaa.CropToFixedSize(width=500, height=500),
+                iaa.PadToFixedSize(width=512, height=512, position="center"),
+            ]),
+            torchvision.transforms.Compose([
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Normalize(CenterNetMultiPose.mean, CenterNetMultiPose.std, inplace=True),
+            ]),
+        ),
+        PoseFlip(0.5),
+        MultiSampleTransform([CenterDetectionSample(num_classes=1), MultiPoseSample()]),
+    ])
 
-    valid_transform = ComposeSample(
-        [
-            ImageAugmentation(
-                iaa.Sequential(
-                    [
-                        iaa.Resize(
-                            {"shorter-side": "keep-aspect-ratio", "longer-side": 500}
-                        ),
-                        iaa.PadToFixedSize(width=512, height=512, position="center"),
-                    ]
-                ),
-                torchvision.transforms.Compose(
-                    [
-                        torchvision.transforms.ToTensor(),
-                        torchvision.transforms.Normalize(
-                            CenterNetMultiPose.mean,
-                            CenterNetMultiPose.std,
-                            inplace=True,
-                        ),
-                    ]
-                ),
-            ),
-            MultiSampleTransform([CenterDetectionSample(num_classes=1), MultiPoseSample()]),
-        ]
-    )
+    valid_transform = ComposeSample([
+        ImageAugmentation(
+            iaa.Sequential([
+                iaa.Resize({"shorter-side": "keep-aspect-ratio", "longer-side": 500}),
+                iaa.PadToFixedSize(width=512, height=512, position="center"),
+            ]),
+            torchvision.transforms.Compose([
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Normalize(CenterNetMultiPose.mean,  CenterNetMultiPose.std, inplace=True),
+            ]),
+        ),
+        MultiSampleTransform([CenterDetectionSample(num_classes=1), MultiPoseSample()]),
+    ])
 
     test_transform = ImageAugmentation(img_transforms=torchvision.transforms.ToTensor())
 
@@ -464,13 +426,13 @@ def cli_main():
     # ------------
     # model
     # ------------
-    args.learning_rate_milestones = list(
+    learning_rate_milestones = list(
         map(int, args.learning_rate_milestones.split(","))
     )
     model = CenterNetMultiPose(
         args.arch,
         args.learning_rate,
-        args.learning_rate_milestones,
+        learning_rate_milestones,
         test_coco=coco_test.coco,
         test_coco_ids=list(sorted(coco_test.coco.imgs.keys())),
     )
@@ -480,26 +442,29 @@ def cli_main():
     # ------------
     # training
     # ------------
-    args.callbacks = [
+    logger = TensorBoardLogger("../tb_logs", name=f"multi_pose_{args.arch}")
+    callbacks = [
         ModelCheckpoint(
             monitor="val_loss",
             mode="min",
-            save_top_k=-1,
+            save_top_k=5,
             save_last=True,
-            period=10,
-            dirpath="model_weights",
-            filename=args.arch + "-detection-{epoch:02d}-{val_loss:.2f}",
+            every_n_epochs=10
         ),
-        LearningRateMonitor(logging_interval="step"),
+        LearningRateMonitor(logging_interval="epoch"),
     ]
 
-    trainer = pl.Trainer.from_argparse_args(args)
+    trainer = pl.Trainer.from_argparse_args(
+        args,
+        callbacks=callbacks,
+        logger=logger
+    )
     trainer.fit(model, train_loader, val_loader)
 
     # ------------
     # testing
     # ------------
-    trainer.test(model, test_dataloaders=test_loader)
+    trainer.test(dataloaders=test_loader)
 
 
 if __name__ == "__main__":
