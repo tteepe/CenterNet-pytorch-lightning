@@ -19,7 +19,7 @@ def gaussian_radius(det_size, min_overlap=0.7):
     r2 = (b2 + sq2) / 2
 
     a3 = 4 * min_overlap
-    b3 = -2 * min_overlap * (height + width)
+    b3 = -2 * min_overlap * (height + width)  # may cause a negative radius
     c3 = (min_overlap - 1) * width * height
     sq3 = math.sqrt(b3 ** 2 - 4 * a3 * c3)
     r3 = (b3 + sq3) / 2
@@ -65,13 +65,13 @@ def draw_msra_gaussian(heatmap, center, sigma):
     w, h = heatmap.shape[0], heatmap.shape[1]
     ul = [int(mu_x - tmp_size), int(mu_y - tmp_size)]
     br = [int(mu_x + tmp_size + 1), int(mu_y + tmp_size + 1)]
-    if ul[0] >= h or ul[1] >= w or br[0] < 0 or br[1] < 0:
+    if br[0] >= h or br[1] >= w or ul[0] < 0 or ul[1] < 0:
         return heatmap
     size = 2 * tmp_size + 1
     x = np.arange(0, size, 1, np.float32)
     y = x[:, np.newaxis]
     x0 = y0 = size // 2
-    g = np.exp(-((x - x0) ** 2 + (y - y0) ** 2) / (2 * sigma ** 2))
+    g = np.exp(-((x - x0) ** 2 + (y - y0) ** 2) / (2 * sigma ** 2))  # if the sigma is 0 here, will cause a Nan value
     g_x = max(0, -ul[0]), min(br[0], h) - ul[0]
     g_y = max(0, -ul[1]), min(br[1], w) - ul[1]
     img_x = max(0, ul[0]), min(br[0], h)
