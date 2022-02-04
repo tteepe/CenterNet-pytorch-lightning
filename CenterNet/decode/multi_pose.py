@@ -61,8 +61,8 @@ def multi_pose_decode(heat, wh, kps, reg=None, hm_hp=None, hp_offset=None, K=100
         hm_xs = (1 - mask) * (-10000) + mask * hm_xs
         hm_kps = (
             torch.stack([hm_xs, hm_ys], dim=-1)
-            .unsqueeze(2)
-            .expand(batch, num_joints, K, K, 2)
+                .unsqueeze(2)
+                .expand(batch, num_joints, K, K, 2)
         )
         dist = ((reg_kps - hm_kps) ** 2).sum(dim=4) ** 0.5
         min_dist, min_ind = dist.min(dim=3)  # b x J x K
@@ -78,17 +78,20 @@ def multi_pose_decode(heat, wh, kps, reg=None, hm_hp=None, hp_offset=None, K=100
         r = bboxes[:, :, 2].view(batch, 1, K, 1).expand(batch, num_joints, K, 1)
         b = bboxes[:, :, 3].view(batch, 1, K, 1).expand(batch, num_joints, K, 1)
         mask = (
-            (hm_kps[..., 0:1] < l)
-            + (hm_kps[..., 0:1] > r)
-            + (hm_kps[..., 1:2] < t)
-            + (hm_kps[..., 1:2] > b)
-            + (hm_score < thresh)
-            + (min_dist > (torch.max(b - t, r - l) * 0.3))
+                (hm_kps[..., 0:1] < l)
+                + (hm_kps[..., 0:1] > r)
+                + (hm_kps[..., 1:2] < t)
+                + (hm_kps[..., 1:2] > b)
+                + (hm_score < thresh)
+                + (min_dist > (torch.max(b - t, r - l) * 0.3))
         )
+        mask = (mask > 0).float()
+        hm_score = hm_score * (1 - mask)
+        hm_score = hm_score.view(batch, K, num_joints)
         mask = (mask > 0).float().expand(batch, num_joints, K, 2)
         kps = (1 - mask) * hm_kps + mask * kps
         kps = kps.permute(0, 2, 1, 3).contiguous().view(batch, K, num_joints * 2)
-    detections = torch.cat([bboxes, scores, kps, clses], dim=2)
+    detections = torch.cat([bboxes, scores, kps, clses, hm_score], dim=2)
 
     return detections
 
@@ -106,8 +109,8 @@ def multi_pose_post_process(dets, c, s, h, w):
             np.concatenate(
                 [bbox.reshape(-1, 4), dets[i, :, 4:5], pts.reshape(-1, 34)], axis=1
             )
-            .astype(np.float32)
-            .tolist()
+                .astype(np.float32)
+                .tolist()
         )
         ret.append({np.ones(1, dtype=np.int32)[0]: top_preds})
     return ret

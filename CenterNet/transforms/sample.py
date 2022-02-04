@@ -66,7 +66,6 @@ class PoseFlip:
                 bbox = target[i]["bbox"]
                 width = img.shape[2]
                 bbox[0] = width - bbox[0] - 1
-                bbox[2] = width - bbox[2] - 1
 
                 if 'num_keypoints' not in target[i] or target[i]['num_keypoints'] == 0:
                     continue
